@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: randomconnect-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.0
+      - key: CLIENT_URL
+        sync: false # set to your Vercel URL(s) after the frontend is deployed
+      - key: MONGO_URI
+        sync: false # MongoDB Atlas connection string
+      - key: TURN_URL
+        sync: false
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false
+      - key: MODERATION_PROVIDER
+        value: hive
+      - key: MODERATION_API_KEY
+        sync: false
+      - key: MIN_AGE
+        value: 18

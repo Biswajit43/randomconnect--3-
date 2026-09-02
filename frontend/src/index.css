@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: "Inter", sans-serif;
+  background-color: #0e1220;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(76, 201, 240, 0.08), transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(157, 141, 241, 0.08), transparent 40%);
+  color: #E7EAF6;
+}
+
+::selection {
+  background: #4CC9F0;
+  color: #0E1220;
+}
+
+/* visible keyboard focus everywhere */
+:focus-visible {
+  outline: 2px solid #4CC9F0;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
