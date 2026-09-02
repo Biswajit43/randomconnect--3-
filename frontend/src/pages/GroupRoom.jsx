@@ -4,7 +4,6 @@ import { socket, getFingerprint, getDisplayName } from "../lib/socket.js";
 import { api } from "../lib/api.js";
 import { useGroupWebRTC } from "../hooks/useGroupWebRTC.js";
 import VideoTile from "../components/VideoTile.jsx";
-import ReportModal from "../components/ReportModal.jsx";
 
 export default function GroupRoom() {
   const { roomId } = useParams();
@@ -22,7 +21,6 @@ export default function GroupRoom() {
   const [mutedPeers, setMutedPeers] = useState(() => new Set());
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
-  const [reportTarget, setReportTarget] = useState(null);
   const [banner, setBanner] = useState(null); // transient notice, e.g. "You were muted by the host"
   const [forceMuted, setForceMuted] = useState(false); // true while a moderator has muted this device
   const chatScrollRef = useRef(null);
@@ -65,10 +63,15 @@ export default function GroupRoom() {
       .then((stream) => {
         localStreamRef.current = stream;
         setLocalStream(stream);
+      })
+      .catch(() => {
+        setMicOn(false);
+        showBanner("Microphone unavailable. You can still join and turn it on later.");
+      })
+      .finally(() => {
         socket.connect();
         socket.emit("identify", { fingerprint: getFingerprint(), ageConfirmed: true });
-      })
-      .catch(() => setPhase("blocked"));
+      });
 
     return () => {
       // Read from the ref, not the `localStream` state variable — this
@@ -161,10 +164,6 @@ export default function GroupRoom() {
         return next;
       });
     }
-    function onReportFailed({ message }) {
-      alert(message || "Couldn't file the report — please try again.");
-    }
-
     socket.on("identified", onIdentified);
     socket.on("group:joined", onJoined);
     socket.on("group:peer-joined", onPeerJoined);
@@ -181,7 +180,6 @@ export default function GroupRoom() {
     socket.on("group:waiting-list", onWaitingList);
     socket.on("group:peer-muted", onPeerMuted);
     socket.on("group:peer-unmuted", onPeerUnmuted);
-    socket.on("group:report-failed", onReportFailed);
 
     return () => {
       socket.off("identified", onIdentified);
@@ -200,7 +198,6 @@ export default function GroupRoom() {
       socket.off("group:waiting-list", onWaitingList);
       socket.off("group:peer-muted", onPeerMuted);
       socket.off("group:peer-unmuted", onPeerUnmuted);
-      socket.off("group:report-failed", onReportFailed);
     };
   }, [roomId, connectToExistingPeer, closeAll, localStream, navigate]);
 
@@ -219,8 +216,8 @@ export default function GroupRoom() {
   }, [messages]);
 
   function toggleMic() {
-    if (forceMuted) return; // host-imposed mute — can't self-override, see onForceMute
-    localStream?.getAudioTracks().forEach((t) => (t.enabled = !t.enabled));
+    if (forceMuted || !localStream?.getAudioTracks().length) return;
+    localStream.getAudioTracks().forEach((t) => (t.enabled = !t.enabled));
     setMicOn((v) => !v);
   }
 
@@ -230,8 +227,11 @@ export default function GroupRoom() {
       try {
         const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
         const track = videoStream.getVideoTracks()[0];
-        localStream.addTrack(track);
-        if (phase === "joined") await addVideoTrackToAllPeers(track, localStream);
+        const nextStream = localStream || new MediaStream();
+        nextStream.addTrack(track);
+        localStreamRef.current = nextStream;
+        setLocalStream(nextStream);
+        if (phase === "joined") await addVideoTrackToAllPeers(track, nextStream);
         setCamOn(true);
       } catch {
         alert("Camera access was denied or unavailable.");
@@ -252,11 +252,6 @@ export default function GroupRoom() {
     socket.emit("group:chat-message", { roomId, text });
     setDraft("");
   }
-  function submitReport({ reason, details }) {
-    socket.emit("group:report", { roomId, targetId: reportTarget.socketId, reason, details });
-    setReportTarget(null);
-  }
-
   // --- Moderator actions ---
   const mute = (targetId) => socket.emit("group:mod-mute", { roomId, targetId });
   const unmute = (targetId) => socket.emit("group:mod-unmute", { roomId, targetId });
@@ -348,12 +343,6 @@ export default function GroupRoom() {
                   </span>
                 )}
                 <div className="absolute top-2 right-2 flex gap-1">
-                  <button
-                    onClick={() => setReportTarget(p)}
-                    className="text-[11px] px-2 py-1 rounded-md bg-black/50 text-coral hover:bg-coral/20 backdrop-blur"
-                  >
-                    Report
-                  </button>
                   {isModerator && !p.isModerator && (
                     <ModMenu
                       isMuted={mutedPeers.has(p.socketId)}
@@ -423,7 +412,7 @@ export default function GroupRoom() {
             </div>
           )}
 
-          <div className="flex-1 flex flex-col bg-panel rounded-2xl border border-white/5 overflow-hidden min-h-0">
+          <div className="flex-1 flex flex-col min-h-[280px] lg:min-h-0 bg-panel rounded-2xl border border-white/5 overflow-hidden">
             <div className="px-4 py-3 border-b border-white/5 font-display text-sm text-mist">Room chat</div>
             <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
               {messages.map((m, i) => (
@@ -450,7 +439,6 @@ export default function GroupRoom() {
         </div>
       </div>
 
-      <ReportModal open={!!reportTarget} onClose={() => setReportTarget(null)} onSubmit={submitReport} />
     </div>
   );
 }

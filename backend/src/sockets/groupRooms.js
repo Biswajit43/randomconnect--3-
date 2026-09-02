@@ -1,6 +1,5 @@
 import { roomState } from "../services/roomState.js";
 import Room from "../models/Room.js";
-import { fileReport, autoBanOnRepeatedReports } from "../services/moderation.js";
 
 /**
  * Group rooms use a full-mesh WebRTC topology: every participant opens a
@@ -129,39 +128,6 @@ export function registerGroupRooms(io) {
         at: Date.now(),
       });
     });
-
-    // --- Report a participant inside a group room ---
-    socket.on(
-      "group:report",
-      safeHandler("group:report", async ({ roomId, targetId, reason, details }) => {
-        try {
-          const target = io.sockets.sockets.get(targetId);
-          const reportedFingerprint = target?.data?.fingerprint || "unknown";
-
-          const report = await fileReport({
-            reporterFingerprint: socket.data.fingerprint,
-            reportedFingerprint,
-            roomId,
-            reason,
-            details,
-          });
-
-          const autoBanned = await autoBanOnRepeatedReports(reportedFingerprint, target?.data?.ipHash);
-          if (autoBanned && target) {
-            target.emit("blocked", { reason: "banned" });
-            leaveGroupRoom(io, target, roomId);
-            target.disconnect(true);
-          }
-
-          socket.emit("group:reported", { reportId: report._id });
-        } catch (err) {
-          // Reporting failing silently is worse than most bugs here — always
-          // tell the client so they know to retry rather than assume it worked.
-          console.error("[groupRooms] group:report failed:", err.message);
-          socket.emit("group:report-failed", { message: "Couldn't file the report — please try again." });
-        }
-      })
-    );
 
     // ---------------------------------------------------------------------
     // Moderator actions — each re-checks the *acting* socket's moderator

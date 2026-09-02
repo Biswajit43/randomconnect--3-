@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { matchmaker } from "../services/matchmaker.js";
-import { isBanned, hashIp, fileReport, autoBanOnRepeatedReports } from "../services/moderation.js";
+import { isBanned, hashIp } from "../services/moderation.js";
 
 // roomId -> { members: [socketId, socketId], fingerprints: {socketId: fp} }
 const activeRooms = new Map();
@@ -123,35 +123,6 @@ export function registerSignaling(io) {
     // --- Skip / next partner ---
     socket.on("session:skip", () => {
       leaveRoom(io, socket, { reason: "skipped" });
-    });
-
-    // --- Reporting a partner (available at all times during a session) ---
-    socket.on("session:report", async ({ roomId, reason, details }) => {
-      try {
-        const partner = getPartner(io, socket.id, roomId);
-        const reportedFingerprint = partner?.data?.fingerprint || "unknown";
-
-        const report = await fileReport({
-          reporterFingerprint: socket.data.fingerprint,
-          reportedFingerprint,
-          roomId,
-          reason,
-          details,
-        });
-
-        const autoBanned = await autoBanOnRepeatedReports(reportedFingerprint, partner?.data?.ipHash);
-        if (autoBanned && partner) {
-          partner.emit("blocked", { reason: "banned" });
-          partner.disconnect(true);
-        }
-
-        socket.emit("session:reported", { reportId: report._id });
-        // Reporting always ends the current session for the reporter's safety.
-        leaveRoom(io, socket, { reason: "reported" });
-      } catch (err) {
-        console.error("[signaling] session:report failed:", err.message);
-        socket.emit("session:report-failed", { message: "Couldn't file the report — please try again." });
-      }
     });
 
     socket.on("disconnect", () => {

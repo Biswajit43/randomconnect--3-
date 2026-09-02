@@ -5,7 +5,6 @@ import { useWebRTC } from "../hooks/useWebRTC.js";
 import VideoTile from "../components/VideoTile.jsx";
 import Controls from "../components/Controls.jsx";
 import ChatPanel from "../components/ChatPanel.jsx";
-import ReportModal from "../components/ReportModal.jsx";
 import PulseConnector from "../components/PulseConnector.jsx";
 
 export default function ChatRoom() {
@@ -20,7 +19,6 @@ export default function ChatRoom() {
   const [queuePosition, setQueuePosition] = useState(null);
   const [partnerName, setPartnerName] = useState("Stranger");
   const [roomId, setRoomId] = useState(null);
-  const [reportOpen, setReportOpen] = useState(false);
   const [blockedReason, setBlockedReason] = useState(null);
 
   const { remoteStream, connectionState, startCall, endCall, addVideoTrack } = useWebRTC({ localStream });
@@ -90,12 +88,6 @@ export default function ChatRoom() {
       setPhase("blocked");
       setBlockedReason(reason);
     }
-    function onReported() {
-      // handled by onPartnerLeft-equivalent flow server-side (session:report ends room)
-    }
-    function onReportFailed({ message }) {
-      alert(message || "Couldn't file the report — please try again.");
-    }
     function onQueueWaiting({ position }) {
       setQueuePosition(position ?? null);
     }
@@ -104,8 +96,6 @@ export default function ChatRoom() {
     socket.on("match:found", onMatchFound);
     socket.on("partner:left", onPartnerLeft);
     socket.on("blocked", onBlocked);
-    socket.on("session:reported", onReported);
-    socket.on("session:report-failed", onReportFailed);
     socket.on("queue:waiting", onQueueWaiting);
 
     return () => {
@@ -113,8 +103,6 @@ export default function ChatRoom() {
       socket.off("match:found", onMatchFound);
       socket.off("partner:left", onPartnerLeft);
       socket.off("blocked", onBlocked);
-      socket.off("session:reported", onReported);
-      socket.off("session:report-failed", onReportFailed);
       socket.off("queue:waiting", onQueueWaiting);
     };
   }, [joinQueue, endCall, interests]);
@@ -155,14 +143,6 @@ export default function ChatRoom() {
     socket.disconnect();
     navigate("/");
   }
-  function submitReport({ reason, details }) {
-    socket.emit("session:report", { roomId, reason, details });
-    setReportOpen(false);
-    endCall();
-    setRoomId(null);
-    setPhase("queued");
-  }
-
   if (phase === "blocked") {
     return (
       <div className="min-h-screen flex items-center justify-center px-6 text-center">
@@ -220,16 +200,14 @@ export default function ChatRoom() {
             onToggleCam={toggleCam}
             onSkip={skip}
             onStop={stop}
-            onReport={() => setReportOpen(true)}
           />
         </div>
 
-        <div className="block min-h-0">
+        <div className="block min-h-[280px] lg:min-h-0">
           <ChatPanel roomId={roomId} partnerName={partnerName} />
         </div>
       </div>
 
-      <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} onSubmit={submitReport} />
     </div>
   );
 }
