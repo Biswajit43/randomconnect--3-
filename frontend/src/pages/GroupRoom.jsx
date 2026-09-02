@@ -399,7 +399,7 @@ export default function GroupRoom() {
           </div>
         </div>
 
-        <div className="hidden lg:flex flex-col gap-4 min-h-0">
+        <div className="flex flex-col gap-4 min-h-0">
           {isModerator && waitingList.length > 0 && (
             <div className="bg-panel rounded-2xl border border-violet/30 overflow-hidden">
               <div className="px-4 py-3 border-b border-white/5 font-display text-sm text-violet">

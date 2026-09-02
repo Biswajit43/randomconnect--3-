@@ -224,7 +224,7 @@ export default function ChatRoom() {
           />
         </div>
 
-        <div className="hidden lg:block min-h-0">
+        <div className="block min-h-0">
           <ChatPanel roomId={roomId} partnerName={partnerName} />
         </div>
       </div>
