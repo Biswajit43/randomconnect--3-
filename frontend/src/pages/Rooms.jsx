@@ -104,7 +104,6 @@ export default function Rooms() {
               <p className="font-mono text-xs tracking-widest text-signal2 uppercase mb-1">group rooms</p>
               <h2 className="font-display text-xl font-bold text-white">Where people are actually talking</h2>
             </div>
-            <h2>wait guyz some fixing is needed just 5 min... </h2>
             <button
               onClick={() => setModalOpen(true)}
               className="px-4 py-2.5 rounded-xl bg-violet/15 border border-violet/40 text-violet font-display font-semibold text-sm hover:bg-violet/25 transition whitespace-nowrap"
