@@ -151,14 +151,9 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
   }, [isYouTube, music?.status, music?.startedAt]);
 
   useEffect(() => {
-    if (!stopped) return;
-    youtubePlayerRef.current?.stopVideo?.();
-    youtubePlayerRef.current?.destroy?.();
-    youtubePlayerRef.current = null;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
+    if (!stopped || !audioRef.current) return;
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
   }, [stopped]);
 
   return (
