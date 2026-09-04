@@ -369,6 +369,8 @@ export default function GroupRoom() {
           <MusicPlayer
             music={music}
             isModerator={isModerator}
+            onPauseGlobal={() => socket.emit("group:music-pause", { roomId })}
+            onResumeGlobal={() => socket.emit("group:music-resume", { roomId })}
             onStop={() => socket.emit("group:music-stop", { roomId })}
           />
           <div className={`grid ${gridCols} gap-3 flex-1 content-start`}>
@@ -460,8 +462,8 @@ export default function GroupRoom() {
                   <button onClick={() => setDraft("/play ")} className="px-2 py-1 rounded-md bg-signal/10 text-signal2 text-[11px] hover:bg-signal/20" title="Add a song command">
                     + song
                   </button>
-                  <button onClick={() => setDraft("/pause")} className="px-2 py-1 rounded-md bg-panel2 text-mist text-[11px] hover:text-white" title="Pause room music">
-                    pause
+                  <button onClick={() => socket.emit(music?.status === "paused" ? "group:music-resume" : "group:music-pause", { roomId })} className="px-2 py-1 rounded-md bg-panel2 text-mist text-[11px] hover:text-white" title="Pause or resume room music">
+                    {music?.status === "paused" ? "play" : "pause"}
                   </button>
                 </div>
               )}

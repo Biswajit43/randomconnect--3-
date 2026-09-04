@@ -54,6 +54,16 @@ async function isModeratorOfRoom(roomId, fingerprint) {
   }
 }
 
+async function canControlMusic(socket, roomId) {
+  if (!roomId || !socket.data.groupRooms?.has(roomId)) return false;
+  return isModeratorOfRoom(roomId, socket.data.fingerprint);
+}
+
+function getMusicPosition(music, now) {
+  if (!music?.startedAt) return 0;
+  return Math.max(0, (now - music.startedAt) / 1000);
+}
+
 export function registerGroupRooms(io) {
   io.on("connection", (socket) => {
     socket.on(
@@ -115,6 +125,47 @@ export function registerGroupRooms(io) {
 
     socket.on("group:leave", ({ roomId }) => leaveGroupRoom(io, socket, roomId));
 
+    socket.on("group:music-pause", safeHandler("group:music-pause", async ({ roomId }, ack) => {
+      if (!(await canControlMusic(socket, roomId))) {
+        if (typeof ack === "function") ack({ ok: false, error: "Only a host can control room music." });
+        return;
+      }
+      const currentMusic = roomState.getMusic(roomId);
+      if (!currentMusic || currentMusic.status !== "playing") return;
+      const now = Date.now();
+      const pausedMusic = {
+        ...currentMusic,
+        status: "paused",
+        pausedAt: now,
+        pausedPosition: getMusicPosition(currentMusic, now),
+        serverNow: now,
+      };
+      roomState.setMusic(roomId, pausedMusic);
+      io.to(roomId).emit("group:music-state", pausedMusic);
+      if (typeof ack === "function") ack({ ok: true });
+    }));
+
+    socket.on("group:music-resume", safeHandler("group:music-resume", async ({ roomId }, ack) => {
+      if (!(await canControlMusic(socket, roomId))) {
+        if (typeof ack === "function") ack({ ok: false, error: "Only a host can control room music." });
+        return;
+      }
+      const currentMusic = roomState.getMusic(roomId);
+      if (!currentMusic || currentMusic.status !== "paused") return;
+      const now = Date.now();
+      const resumedMusic = {
+        ...currentMusic,
+        status: "playing",
+        startedAt: now - ((currentMusic.pausedPosition || 0) * 1000),
+        serverNow: now,
+      };
+      delete resumedMusic.pausedAt;
+      delete resumedMusic.pausedPosition;
+      roomState.setMusic(roomId, resumedMusic);
+      io.to(roomId).emit("group:music-state", resumedMusic);
+      if (typeof ack === "function") ack({ ok: true });
+    }));
+
     // Playback controls have their own event so stopping music can never
     // interfere with the normal room-chat message flow.
     socket.on("group:music-stop", safeHandler("group:music-stop", async ({ roomId }, ack) => {
@@ -163,7 +214,7 @@ export function registerGroupRooms(io) {
 
         const playMatch = text.match(/^\/?play\s+(.+)/i);
         const pastedYouTubeUrl = parseYouTubeId(text.trim()) ? text.trim() : null;
-        const isPauseOrStop = /^\/?(pause|stop)\s*$/i.test(text.trim());
+        const isPauseOrStop = /^\/?(pause|stop|resume)\s*$/i.test(text.trim());
 
         if (playMatch || pastedYouTubeUrl || isPauseOrStop) {
           console.log(`[groupRooms] music command received: ${text.trim()}`);
@@ -176,14 +227,31 @@ export function registerGroupRooms(io) {
           }
 
           if (isPauseOrStop) {
-            const status = text.trim().toLowerCase().replace(/^\//, "") === "pause" ? "paused" : "stopped";
+            const command = text.trim().toLowerCase().replace(/^\//, "");
             const now = Date.now();
             const currentMusic = roomState.getMusic(roomId);
-            const nextState = status === "paused" && currentMusic
-              ? { ...currentMusic, status, pausedAt: now, serverNow: now }
-              : { status, serverNow: now };
-            if (status === "paused") roomState.setMusic(roomId, nextState);
-            else roomState.updateMusicStatus(roomId, status);
+            if (command === "stop") roomState.clearMusic(roomId);
+            if (command === "pause" && currentMusic) {
+              roomState.setMusic(roomId, {
+                ...currentMusic,
+                status: "paused",
+                pausedAt: now,
+                pausedPosition: getMusicPosition(currentMusic, now),
+                serverNow: now,
+              });
+            }
+            if (command === "resume" && currentMusic?.status === "paused") {
+              const resumedMusic = {
+                ...currentMusic,
+                status: "playing",
+                startedAt: now - ((currentMusic.pausedPosition || 0) * 1000),
+                serverNow: now,
+              };
+              delete resumedMusic.pausedAt;
+              delete resumedMusic.pausedPosition;
+              roomState.setMusic(roomId, resumedMusic);
+            }
+            const nextState = command === "stop" ? { status: "stopped", serverNow: now } : roomState.getMusic(roomId);
             io.to(roomId).emit("group:music-state", nextState);
             if (typeof ack === "function") ack({ ok: true });
             return;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { loadYouTubeApi } from "../lib/youtubeApi.js";
 
-export default function MusicPlayer({ music, isModerator, onStop }) {
+export default function MusicPlayer({ music, isModerator, onPauseGlobal, onResumeGlobal, onStop }) {
   const audioRef = useRef(null);
   const youtubeContainerRef = useRef(null);
   const youtubePlayerRef = useRef(null);
@@ -138,8 +138,14 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
     const player = youtubePlayerRef.current;
     if (!isYouTube || !player?.pauseVideo) return;
     if (music.status === "paused" || music.status === "stopped") player.pauseVideo();
-    if (music.status === "playing") player.playVideo?.();
-  }, [isYouTube, music?.status]);
+    if (music.status === "playing") {
+      player.seekTo(elapsedSeconds(), true);
+      player.playVideo?.();
+    }
+    // A global resume changes startedAt so every YouTube listener seeks to
+    // the exact shared pause position before playback continues.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isYouTube, music?.status, music?.startedAt]);
 
   const stopped = !music || music.status === "stopped";
 
@@ -186,10 +192,18 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
             Enable Music
           </button>
         )}
-        {isModerator && music.status === "playing" && (
-          <button onClick={onStop} className="px-3 py-1.5 rounded-lg bg-coral/15 text-coral text-xs whitespace-nowrap">
-            Stop
-          </button>
+        {isModerator && (
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={music.status === "paused" ? onResumeGlobal : onPauseGlobal}
+              className="px-3 py-1.5 rounded-lg bg-signal/15 text-signal2 text-xs whitespace-nowrap"
+            >
+              {music.status === "paused" ? "Play all" : "Pause all"}
+            </button>
+            <button onClick={onStop} className="px-3 py-1.5 rounded-lg bg-coral/15 text-coral text-xs whitespace-nowrap">
+              Stop all
+            </button>
+          </div>
         )}
       </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
