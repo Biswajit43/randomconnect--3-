@@ -134,7 +134,7 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
             Enable Music
           </button>
         )}
-        {isModerator && (
+        {isModerator && music.status === "playing" && (
           <button onClick={onStop} className="px-3 py-1.5 rounded-lg bg-coral/15 text-coral text-xs whitespace-nowrap">
             Stop
           </button>

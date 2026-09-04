@@ -115,6 +115,24 @@ export function registerGroupRooms(io) {
 
     socket.on("group:leave", ({ roomId }) => leaveGroupRoom(io, socket, roomId));
 
+    // Playback controls have their own event so stopping music can never
+    // interfere with the normal room-chat message flow.
+    socket.on("group:music-stop", safeHandler("group:music-stop", async ({ roomId }, ack) => {
+      if (!roomId || !socket.data.groupRooms?.has(roomId)) {
+        if (typeof ack === "function") ack({ ok: false, error: "You are not connected to this room." });
+        return;
+      }
+      if (!(await isModeratorOfRoom(roomId, socket.data.fingerprint))) {
+        socket.emit("group:music-error", { message: "Only the host can control room music." });
+        if (typeof ack === "function") ack({ ok: false, error: "Only the host can control room music." });
+        return;
+      }
+      const now = Date.now();
+      roomState.updateMusicStatus(roomId, "stopped");
+      io.to(roomId).emit("group:music-state", { status: "stopped", serverNow: now });
+      if (typeof ack === "function") ack({ ok: true });
+    }));
+
     // --- Mesh WebRTC signaling, targeted at a specific peer (not broadcast) ---
     socket.on("group:webrtc-offer", ({ roomId, targetId, sdp }) => {
       io.to(targetId).emit("group:webrtc-offer", { roomId, fromId: socket.id, sdp });

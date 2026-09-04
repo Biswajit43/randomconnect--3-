@@ -369,7 +369,7 @@ export default function GroupRoom() {
           <MusicPlayer
             music={music}
             isModerator={isModerator}
-            onStop={() => socket.emit("group:chat-message", { roomId, text: "/stop" })}
+            onStop={() => socket.emit("group:music-stop", { roomId })}
           />
           <div className={`grid ${gridCols} gap-3 flex-1 content-start`}>
             <VideoTile stream={localStream} muted mirrored label={`You (${displayName.current})`} />
