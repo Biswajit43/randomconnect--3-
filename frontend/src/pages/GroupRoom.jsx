@@ -13,7 +13,7 @@ export default function GroupRoom() {
 
   const [room, setRoom] = useState(state?.room || null);
   const [localStream, setLocalStream] = useState(null);
-  const [micOn, setMicOn] = useState(true);
+  const [micOn, setMicOn] = useState(false);
   const [camOn, setCamOn] = useState(false); // camera stays off until the user turns it on
   const [peers, setPeers] = useState([]); // [{socketId, displayName, isModerator}]
   const [phase, setPhase] = useState("connecting-media"); // connecting-media | joined | waiting | blocked
@@ -64,6 +64,9 @@ export default function GroupRoom() {
     navigator.mediaDevices
       .getUserMedia({ video: false, audio: true })
       .then((stream) => {
+        // Joining is listen-only by default. The user explicitly enables the
+        // microphone with the control below.
+        stream.getAudioTracks().forEach((track) => (track.enabled = false));
         localStreamRef.current = stream;
         setLocalStream(stream);
         socket.connect();
