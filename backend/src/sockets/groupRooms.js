@@ -256,7 +256,7 @@ export function registerGroupRooms(io) {
             if (typeof ack === "function") ack({ ok: true });
             return;
           }
-
+ 
           const query = playMatch ? playMatch[1].trim() : pastedYouTubeUrl;
           try {
             const track = await resolveTrack(query);

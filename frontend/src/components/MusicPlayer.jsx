@@ -130,6 +130,8 @@ export default function MusicPlayer({ music, isModerator, onPauseGlobal, onResum
 
     return () => {
       cancelled = true;
+      youtubePlayerRef.current?.destroy?.();
+      youtubePlayerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isYouTube, music?.videoId]);
@@ -206,29 +208,18 @@ export default function MusicPlayer({ music, isModerator, onPauseGlobal, onResum
           </div>
         )}
       </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            onClick={toggleLocalPlayback}
-            disabled={music.status !== "playing"}
-            className="px-3 py-1.5 rounded-lg bg-panel2 border border-white/10 text-mist text-xs hover:text-white hover:border-signal/40"
-          >
-            {music.status !== "playing" ? "Room paused" : localPaused ? "Play here" : "Pause here"}
-          </button>
-          <span className="text-[11px] text-mist/60">Only changes playback on your device</span>
-        </div>
         </div>
       )}
-      <YouTubeMount active={!stopped && isYouTube} containerRef={youtubeContainerRef} />
+      {!stopped && isYouTube && <YouTubeMount containerRef={youtubeContainerRef} />}
     </div>
   );
 }
 
-function YouTubeMount({ active, containerRef }) {
+function YouTubeMount({ containerRef }) {
   return (
     <div
       ref={containerRef}
-      aria-hidden={!active}
-      className={active ? "mt-3 w-full aspect-video rounded-lg overflow-hidden" : "absolute w-px h-px overflow-hidden opacity-0 pointer-events-none"}
+      className="mt-3 w-full aspect-video rounded-lg overflow-hidden [&>iframe]:block [&>iframe]:w-full [&>iframe]:h-full"
     />
   );
 }
