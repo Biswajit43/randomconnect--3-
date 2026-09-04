@@ -5,11 +5,17 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
   const audioRef = useRef(null);
   const youtubeContainerRef = useRef(null);
   const youtubePlayerRef = useRef(null);
+  const syncTimerRef = useRef(null);
   const [needsEnable, setNeedsEnable] = useState(false);
   const isYouTube = music?.type === "youtube";
 
   function elapsedSeconds() {
-    return music?.startedAt ? Math.max(0, (Date.now() - music.startedAt) / 1000) : 0;
+    if (!music?.startedAt) return 0;
+    if (music.status === "paused" && music.pausedAt) {
+      return Math.max(0, (music.pausedAt - music.startedAt) / 1000);
+    }
+    const clockCorrection = music.serverNow && music.receivedAt ? music.serverNow - music.receivedAt : 0;
+    return Math.max(0, (Date.now() + clockCorrection - music.startedAt) / 1000);
   }
 
   useEffect(() => {
@@ -24,6 +30,21 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isYouTube, music?.previewUrl, music?.startedAt, music?.status]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    const player = youtubePlayerRef.current;
+    if (!music || music.status !== "playing") return undefined;
+
+    syncTimerRef.current = window.setInterval(() => {
+      const expected = elapsedSeconds();
+      if (audio && Math.abs(audio.currentTime - expected) > 0.4) audio.currentTime = expected;
+      if (player?.getCurrentTime && Math.abs(player.getCurrentTime() - expected) > 0.6) player.seekTo(expected, true);
+    }, 2000);
+
+    return () => window.clearInterval(syncTimerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [music?.status, music?.startedAt, music?.serverNow, music?.receivedAt]);
 
   useEffect(() => {
     if (!isYouTube || !music?.videoId || !youtubeContainerRef.current) return;
@@ -47,7 +68,7 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
           videoId: music.videoId,
           width: "100%",
           height: "100%",
-          playerVars: { autoplay: 1, controls: 1, playsinline: 1, rel: 0, modestbranding: 1 },
+          playerVars: { autoplay: 1, controls: 0, disablekb: 1, playsinline: 1, rel: 0, modestbranding: 1 },
           events: { onReady: startPlayback, onError: () => setNeedsEnable(true) },
         });
       } else {

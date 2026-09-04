@@ -93,7 +93,7 @@ export function registerGroupRooms(io) {
         // Late joiners hear whatever's already playing, roughly in sync —
         // the player seeks to (now - startedAt) on the client side.
         const currentMusic = roomState.getMusic(roomId);
-        if (currentMusic) socket.emit("group:music-state", currentMusic);
+        if (currentMusic) socket.emit("group:music-state", { ...currentMusic, serverNow: Date.now() });
 
 
 
@@ -159,8 +159,14 @@ export function registerGroupRooms(io) {
 
           if (isPauseOrStop) {
             const status = text.trim().toLowerCase().replace(/^\//, "") === "pause" ? "paused" : "stopped";
-            roomState.updateMusicStatus(roomId, status);
-            io.to(roomId).emit("group:music-state", { status });
+            const now = Date.now();
+            const currentMusic = roomState.getMusic(roomId);
+            const nextState = status === "paused" && currentMusic
+              ? { ...currentMusic, status, pausedAt: now, serverNow: now }
+              : { status, serverNow: now };
+            if (status === "paused") roomState.setMusic(roomId, nextState);
+            else roomState.updateMusicStatus(roomId, status);
+            io.to(roomId).emit("group:music-state", nextState);
             if (typeof ack === "function") ack({ ok: true });
             return;
           }
@@ -177,6 +183,7 @@ export function registerGroupRooms(io) {
               ...track,
               status: "playing",
               startedAt: Date.now(),
+              serverNow: Date.now(),
               requestedBy: socket.data.groupMeta?.displayName || "Host",
             };
             roomState.setMusic(roomId, state);
