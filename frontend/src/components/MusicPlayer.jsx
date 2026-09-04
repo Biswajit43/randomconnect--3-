@@ -6,16 +6,19 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
   const youtubeContainerRef = useRef(null);
   const youtubePlayerRef = useRef(null);
   const syncTimerRef = useRef(null);
+  const musicRef = useRef(music);
   const [needsEnable, setNeedsEnable] = useState(false);
   const isYouTube = music?.type === "youtube";
+  musicRef.current = music;
 
   function elapsedSeconds() {
-    if (!music?.startedAt) return 0;
-    if (music.status === "paused" && music.pausedAt) {
-      return Math.max(0, (music.pausedAt - music.startedAt) / 1000);
+    const currentMusic = musicRef.current;
+    if (!currentMusic?.startedAt) return 0;
+    if (currentMusic.status === "paused" && currentMusic.pausedAt) {
+      return Math.max(0, (currentMusic.pausedAt - currentMusic.startedAt) / 1000);
     }
-    const clockCorrection = music.serverNow && music.receivedAt ? music.serverNow - music.receivedAt : 0;
-    return Math.max(0, (Date.now() + clockCorrection - music.startedAt) / 1000);
+    const clockCorrection = currentMusic.serverNow && currentMusic.receivedAt ? currentMusic.serverNow - currentMusic.receivedAt : 0;
+    return Math.max(0, (Date.now() + clockCorrection - currentMusic.startedAt) / 1000);
   }
 
   useEffect(() => {
@@ -38,8 +41,22 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
 
     syncTimerRef.current = window.setInterval(() => {
       const expected = elapsedSeconds();
-      if (audio && Math.abs(audio.currentTime - expected) > 0.4) audio.currentTime = expected;
-      if (player?.getCurrentTime && Math.abs(player.getCurrentTime() - expected) > 0.6) player.seekTo(expected, true);
+      if (audio) {
+        if (Math.abs(audio.currentTime - expected) > 0.4) audio.currentTime = expected;
+        if (audio.paused) audio.play().catch(() => setNeedsEnable(true));
+      }
+      if (player?.getCurrentTime) {
+        if (Math.abs(player.getCurrentTime() - expected) > 0.6) player.seekTo(expected, true);
+        const playerState = player.getPlayerState?.();
+        if (playerState === 2 || playerState === 5) {
+          try {
+            player.seekTo(expected, true);
+            player.playVideo();
+          } catch {
+            setNeedsEnable(true);
+          }
+        }
+      }
     }, 2000);
 
     return () => window.clearInterval(syncTimerRef.current);
@@ -69,7 +86,26 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
           width: "100%",
           height: "100%",
           playerVars: { autoplay: 1, controls: 0, disablekb: 1, playsinline: 1, rel: 0, modestbranding: 1 },
-          events: { onReady: startPlayback, onError: () => setNeedsEnable(true) },
+          events: {
+            onReady: startPlayback,
+            onError: () => setNeedsEnable(true),
+            onAutoplayBlocked: () => setNeedsEnable(true),
+            onStateChange: (event) => {
+              // A phone or browser can pause the iframe independently. If
+              // the room is still playing, bring this listener back to the
+              // shared timeline. Intentional room pause/stop is left alone.
+              if (musicRef.current?.status !== "playing") return;
+              const paused = event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.CUED;
+              if (paused) {
+                try {
+                  event.target.seekTo(elapsedSeconds(), true);
+                  event.target.playVideo();
+                } catch {
+                  setNeedsEnable(true);
+                }
+              }
+            },
+          },
         });
       } else {
         youtubePlayerRef.current.loadVideoById(music.videoId);
@@ -90,26 +126,19 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
     if (music.status === "playing") player.playVideo?.();
   }, [isYouTube, music?.status]);
 
-  useEffect(() => {
-    if ((!music || music.status === "stopped") && youtubePlayerRef.current?.destroy) {
-      youtubePlayerRef.current.destroy();
-      youtubePlayerRef.current = null;
-    }
-  }, [music]);
-
-  if (!music || music.status === "stopped") {
-    return (
-      <div className="flex items-center gap-2.5 bg-panel border border-signal/20 rounded-xl px-3 py-2.5 mb-3 text-xs">
-        <span className="text-base" aria-hidden="true">🎵</span>
-        <p className="text-mist truncate">
-          <span className="text-white font-medium">Room music:</span> host types <code className="text-signal2">/play song</code> or pastes a YouTube link.
-        </p>
-      </div>
-    );
-  }
+  const stopped = !music || music.status === "stopped";
 
   return (
-    <div className="bg-panel border border-signal/25 rounded-2xl p-3 mb-3 shadow-[0_0_0_1px_rgba(76,201,240,0.04)]">
+    <div className={stopped ? "relative" : "relative bg-panel border border-signal/25 rounded-2xl p-3 mb-3 shadow-[0_0_0_1px_rgba(76,201,240,0.04)]"}>
+      {stopped ? (
+        <div className="flex items-center gap-2.5 bg-panel border border-signal/20 rounded-xl px-3 py-2.5 mb-3 text-xs">
+          <span className="text-base" aria-hidden="true">🎵</span>
+          <p className="text-mist truncate">
+            <span className="text-white font-medium">Room music:</span> host types <code className="text-signal2">/play song</code> or pastes a YouTube link.
+          </p>
+        </div>
+      ) : (
+        <div>
       <div className="flex items-center gap-3">
         {!isYouTube && <audio ref={audioRef} src={music.previewUrl} preload="auto" />}
         <span className="text-lg shrink-0">🎵</span>
@@ -140,7 +169,19 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
           </button>
         )}
       </div>
-      {isYouTube && <div ref={youtubeContainerRef} className="mt-3 w-full aspect-video rounded-lg overflow-hidden" />}
+        </div>
+      )}
+      <YouTubeMount active={!stopped && isYouTube} containerRef={youtubeContainerRef} />
     </div>
+  );
+}
+
+function YouTubeMount({ active, containerRef }) {
+  return (
+    <div
+      ref={containerRef}
+      aria-hidden={!active}
+      className={active ? "mt-3 w-full aspect-video rounded-lg overflow-hidden" : "absolute w-px h-px overflow-hidden opacity-0 pointer-events-none"}
+    />
   );
 }
