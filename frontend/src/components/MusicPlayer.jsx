@@ -15,6 +15,7 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
 
   useEffect(() => {
     setLocalPaused(false);
+    setNeedsEnable(false);
   }, [music?.videoId, music?.previewUrl, music?.startedAt]);
 
   function elapsedSeconds() {
@@ -100,7 +101,16 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
           videoId: music.videoId,
           width: "100%",
           height: "100%",
-          playerVars: { autoplay: 1, controls: 0, disablekb: 1, playsinline: 1, rel: 0, modestbranding: 1 },
+          playerVars: {
+            autoplay: 1,
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            iv_load_policy: 3,
+            modestbranding: 1,
+            playsinline: 1,
+            rel: 0,
+          },
           events: {
             onReady: startPlayback,
             onError: () => setNeedsEnable(true),
@@ -194,9 +204,9 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
               toggleLocalPlayback();
               setNeedsEnable(false);
             }}
-            className="px-3 py-1.5 rounded-lg bg-signal text-ink text-xs font-semibold whitespace-nowrap"
+            className="shrink-0 px-3 py-1.5 rounded-lg bg-signal text-ink text-xs font-semibold whitespace-nowrap"
           >
-            Enable Music
+            Play here
           </button>
         )}
         {isModerator && (
@@ -215,8 +225,12 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
 function YouTubeMount({ containerRef }) {
   return (
     <div
-      ref={containerRef}
-      className="mt-3 w-full aspect-video rounded-lg overflow-hidden [&>iframe]:block [&>iframe]:w-full [&>iframe]:h-full"
-    />
+      className="relative mt-3 mx-auto w-full max-w-2xl aspect-video overflow-hidden rounded-xl bg-black border border-white/10"
+    >
+      <div
+        ref={containerRef}
+        className="absolute inset-0 [&>iframe]:absolute [&>iframe]:inset-0 [&>iframe]:block [&>iframe]:w-full [&>iframe]:h-full"
+      />
+    </div>
   );
 }
