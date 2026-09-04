@@ -76,10 +76,30 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
     }
   }, [music]);
 
-  if (!music || music.status === "stopped") return null;
+  if (!music || music.status === "stopped") {
+    return (
+      <section className="bg-panel border border-signal/20 rounded-2xl p-4 mb-3 shadow-[0_0_0_1px_rgba(76,201,240,0.04)]">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 shrink-0 rounded-xl bg-signal/15 border border-signal/20 flex items-center justify-center text-xl" aria-hidden="true">
+            🎵
+          </div>
+          <div className="min-w-0">
+            <p className="font-display font-semibold text-white">Room soundtrack</p>
+            <p className="text-sm text-mist mt-0.5">Drop a song into the conversation and let the room vibe.</p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-3 text-xs">
+          <div className="bg-panel2/70 rounded-xl px-3 py-2.5 text-mist"><span className="text-signal2 font-mono">01</span><span className="ml-2">Open room chat</span></div>
+          <div className="bg-panel2/70 rounded-xl px-3 py-2.5 text-mist"><span className="text-signal2 font-mono">02</span><span className="ml-2">Type <code className="text-white">/play song</code></span></div>
+          <div className="bg-panel2/70 rounded-xl px-3 py-2.5 text-mist"><span className="text-signal2 font-mono">03</span><span className="ml-2">Host starts the vibe</span></div>
+        </div>
+        <p className="mt-3 text-[11px] text-mist/70 font-mono">Host tip: paste a YouTube link, or use /pause and /stop.</p>
+      </section>
+    );
+  }
 
   return (
-    <div className="bg-panel border border-white/5 rounded-xl p-3 mb-3">
+    <div className="bg-panel border border-signal/25 rounded-2xl p-3 mb-3 shadow-[0_0_0_1px_rgba(76,201,240,0.04)]">
       <div className="flex items-center gap-3">
         {!isYouTube && <audio ref={audioRef} src={music.previewUrl} preload="auto" />}
         <span className="text-lg shrink-0">🎵</span>

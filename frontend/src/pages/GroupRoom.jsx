@@ -395,7 +395,7 @@ export default function GroupRoom() {
             ))}
           </div>
 
-          <div className="flex items-center justify-center gap-3 py-2">
+          <div className="sticky bottom-0 z-20 -mx-1 flex items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5">
             <button
               onClick={toggleMic}
               disabled={forceMuted}
@@ -423,7 +423,7 @@ export default function GroupRoom() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-4 min-h-0">
+        <div className="flex flex-col gap-4 min-h-[380px] lg:min-h-0">
           {isModerator && waitingList.length > 0 && (
             <div className="bg-panel rounded-2xl border border-violet/30 overflow-hidden">
               <div className="px-4 py-3 border-b border-white/5 font-display text-sm text-violet">
@@ -448,7 +448,22 @@ export default function GroupRoom() {
           )}
 
           <div className="flex-1 flex flex-col bg-panel rounded-2xl border border-white/5 overflow-hidden min-h-0">
-            <div className="px-4 py-3 border-b border-white/5 font-display text-sm text-mist">Room chat</div>
+            <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between gap-3">
+              <div>
+                <p className="font-display text-sm text-mist">Room chat</p>
+                <p className="text-[11px] text-mist/60 mt-0.5">Say hi, share a link, keep it respectful.</p>
+              </div>
+              {isModerator && (
+                <div className="flex gap-1.5 shrink-0">
+                  <button onClick={() => setDraft("/play ")} className="px-2 py-1 rounded-md bg-signal/10 text-signal2 text-[11px] hover:bg-signal/20" title="Add a song command">
+                    + song
+                  </button>
+                  <button onClick={() => setDraft("/pause")} className="px-2 py-1 rounded-md bg-panel2 text-mist text-[11px] hover:text-white" title="Pause room music">
+                    pause
+                  </button>
+                </div>
+              )}
+            </div>
             <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
               {messages.map((m, i) => (
                 <div key={i} className="text-sm">

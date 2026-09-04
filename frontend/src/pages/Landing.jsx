@@ -64,6 +64,13 @@ export default function Landing() {
             className="w-full bg-panel border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:outline-signal"
           />
 
+          <div className="flex items-start gap-3 rounded-xl border border-signal/15 bg-signal/5 px-3.5 py-3 text-left">
+            <span className="text-lg leading-none" aria-hidden="true">🎵</span>
+            <p className="text-xs leading-relaxed text-mist">
+              <span className="text-signal2 font-semibold">Group room bonus:</span> the host can start a shared soundtrack from chat with <code className="text-white">/play song name</code> or a YouTube link.
+            </p>
+          </div>
+
           <label className="flex items-start gap-3 text-left text-sm text-mist">
             <input
               type="checkbox"
