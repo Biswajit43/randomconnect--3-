@@ -369,8 +369,6 @@ export default function GroupRoom() {
           <MusicPlayer
             music={music}
             isModerator={isModerator}
-            onPauseGlobal={() => socket.emit("group:music-pause", { roomId })}
-            onResumeGlobal={() => socket.emit("group:music-resume", { roomId })}
             onStop={() => socket.emit("group:music-stop", { roomId })}
           />
           <div className={`grid ${gridCols} gap-3 flex-1 content-start`}>

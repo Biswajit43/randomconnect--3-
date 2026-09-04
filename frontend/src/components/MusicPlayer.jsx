@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { loadYouTubeApi } from "../lib/youtubeApi.js";
 
-export default function MusicPlayer({ music, isModerator, onPauseGlobal, onResumeGlobal, onStop }) {
+export default function MusicPlayer({ music, isModerator, onStop }) {
   const audioRef = useRef(null);
   const youtubeContainerRef = useRef(null);
   const youtubePlayerRef = useRef(null);
@@ -10,6 +10,7 @@ export default function MusicPlayer({ music, isModerator, onPauseGlobal, onResum
   const [needsEnable, setNeedsEnable] = useState(false);
   const [localPaused, setLocalPaused] = useState(false);
   const isYouTube = music?.type === "youtube";
+  const stopped = !music || music.status === "stopped";
   musicRef.current = music;
 
   useEffect(() => {
@@ -149,7 +150,16 @@ export default function MusicPlayer({ music, isModerator, onPauseGlobal, onResum
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isYouTube, music?.status, music?.startedAt]);
 
-  const stopped = !music || music.status === "stopped";
+  useEffect(() => {
+    if (!stopped) return;
+    youtubePlayerRef.current?.stopVideo?.();
+    youtubePlayerRef.current?.destroy?.();
+    youtubePlayerRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+  }, [stopped]);
 
   return (
     <div className={stopped ? "relative" : "relative bg-panel border border-signal/25 rounded-2xl p-3 mb-3 shadow-[0_0_0_1px_rgba(76,201,240,0.04)]"}>
@@ -195,17 +205,9 @@ export default function MusicPlayer({ music, isModerator, onPauseGlobal, onResum
           </button>
         )}
         {isModerator && (
-          <div className="flex gap-2 shrink-0">
-            <button
-              onClick={music.status === "paused" ? onResumeGlobal : onPauseGlobal}
-              className="px-3 py-1.5 rounded-lg bg-signal/15 text-signal2 text-xs whitespace-nowrap"
-            >
-              {music.status === "paused" ? "Play all" : "Pause all"}
-            </button>
-            <button onClick={onStop} className="px-3 py-1.5 rounded-lg bg-coral/15 text-coral text-xs whitespace-nowrap">
-              Stop all
-            </button>
-          </div>
+          <button onClick={onStop} className="px-3 py-1.5 rounded-lg bg-coral/15 text-coral text-xs whitespace-nowrap">
+            Stop
+          </button>
         )}
       </div>
         </div>

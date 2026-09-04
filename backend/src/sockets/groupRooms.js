@@ -1,6 +1,6 @@
 import { roomState } from "../services/roomState.js";
 import Room from "../models/Room.js";
-import { parseYouTubeId, resolveTrack } from "../services/musicService.js";
+import { searchTrack, parseYouTubeId, getYouTubeMetadata } from "../services/musicService.js";
 
 /**
  * Group rooms use a full-mesh WebRTC topology: every participant opens a
@@ -259,7 +259,17 @@ export function registerGroupRooms(io) {
  
           const query = playMatch ? playMatch[1].trim() : pastedYouTubeUrl;
           try {
-            const track = await resolveTrack(query);
+            const youtubeId = parseYouTubeId(query);
+            let track;
+
+            if (youtubeId) {
+              const metadata = await getYouTubeMetadata(youtubeId);
+              track = { type: "youtube", videoId: youtubeId, title: metadata.title, artist: metadata.author };
+            } else {
+              const preview = await searchTrack(query);
+              track = preview ? { type: "preview", ...preview } : null;
+            }
+
             if (!track) {
               socket.emit("group:music-error", { message: `Couldn't find a playable track for "${query}".` });
               if (typeof ack === "function") ack({ ok: false, error: "Track not found." });
