@@ -62,7 +62,6 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
 
   useEffect(() => {
     const audio = audioRef.current;
-    const player = youtubePlayerRef.current;
     if (!music || music.status !== "playing") return undefined;
 
     syncTimerRef.current = window.setInterval(() => {
@@ -70,10 +69,15 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
       if (audio) {
         if (Math.abs(audio.currentTime - expected) > 0.4) audio.currentTime = expected;
       }
+      const player = youtubePlayerRef.current;
       if (player?.getCurrentTime) {
-        if (Math.abs(player.getCurrentTime() - expected) > 0.6) player.seekTo(expected, true);
+        if (player.getPlayerState?.() !== 1) return;
+        const current = player.getCurrentTime();
+        // Let YouTube play naturally. Only correct meaningful drift; seeking
+        // for small differences makes playback visibly stutter.
+        if (Math.abs(current - expected) > 1.5) player.seekTo(expected, true);
       }
-    }, 2000);
+    }, 1500);
 
     return () => window.clearInterval(syncTimerRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,12 +91,16 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
       if (cancelled) return;
       const startPlayback = () => {
         const player = youtubePlayerRef.current;
-        if (!player || music.status !== "playing") return;
+        if (!player) return;
         player.seekTo(elapsedSeconds(), true);
-        try {
-          player.playVideo();
-        } catch {
-          setNeedsEnable(true);
+        if (music.status === "playing") {
+          try {
+            player.playVideo();
+          } catch {
+            setNeedsEnable(true);
+          }
+        } else {
+          player.pauseVideo();
         }
       };
 
@@ -102,7 +110,7 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
           width: "100%",
           height: "100%",
           playerVars: {
-            autoplay: 1,
+            autoplay: 0,
             controls: 0,
             disablekb: 1,
             fs: 0,
@@ -110,6 +118,7 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
             modestbranding: 1,
             playsinline: 1,
             rel: 0,
+            start: Math.floor(elapsedSeconds()),
           },
           events: {
             onReady: startPlayback,
@@ -124,10 +133,8 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
               if (event.data === YT.PlayerState.PAUSED) {
                 setLocalPaused(true);
               } else if (playing) {
-                // A listener may press the YouTube play overlay on their
-                // phone. Accept the gesture, but immediately align it to the
-                // room timeline so local playback cannot run ahead or behind.
-                event.target.seekTo(elapsedSeconds(), true);
+                // Do not seek here. Seeking in response to PLAYING causes a
+                // seek/buffer/PLAYING loop in the YouTube iframe.
                 setLocalPaused(false);
               }
             },
@@ -209,6 +216,12 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
             Play here
           </button>
         )}
+        <button
+          onClick={toggleLocalPlayback}
+          className="shrink-0 px-3 py-1.5 rounded-lg bg-panel2 text-mist text-xs font-semibold whitespace-nowrap hover:text-white"
+        >
+          {localPaused ? "Play" : "Pause"}
+        </button>
         {isModerator && (
           <button onClick={onStop} className="px-3 py-1.5 rounded-lg bg-coral/15 text-coral text-xs whitespace-nowrap">
             Stop

@@ -275,11 +275,12 @@ export function registerGroupRooms(io) {
               if (typeof ack === "function") ack({ ok: false, error: "Track not found." });
               return;
             }
+            const now = Date.now();
             const state = {
               ...track,
               status: "playing",
-              startedAt: Date.now(),
-              serverNow: Date.now(),
+              startedAt: now,
+              serverNow: now,
               requestedBy: socket.data.groupMeta?.displayName || "Host",
             };
             roomState.setMusic(roomId, state);
