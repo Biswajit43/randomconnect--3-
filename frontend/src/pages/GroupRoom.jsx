@@ -165,7 +165,7 @@ export default function GroupRoom() {
     function onMusicState(state) {
       // Keep the local receipt time so the player can estimate network delay
       // and follow the server timeline instead of each browser's clock.
-      setMusic((prev) => ({ ...prev, ...state, receivedAt: Date.now() }));
+      setMusic((prev) => state.status === "stopped" ? null : { ...prev, ...state, receivedAt: Date.now() });
     }
     function onMusicError({ message }) {
       showBanner(message);

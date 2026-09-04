@@ -148,6 +148,11 @@ class RoomState {
     const room = this.rooms.get(roomId);
     if (room?.music) room.music.status = status;
   }
+
+  clearMusic(roomId) {
+    const room = this.rooms.get(roomId);
+    if (room) room.music = null;
+  }
 }
 
 export const roomState = new RoomState();

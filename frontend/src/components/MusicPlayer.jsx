@@ -8,8 +8,13 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
   const syncTimerRef = useRef(null);
   const musicRef = useRef(music);
   const [needsEnable, setNeedsEnable] = useState(false);
+  const [localPaused, setLocalPaused] = useState(false);
   const isYouTube = music?.type === "youtube";
   musicRef.current = music;
+
+  useEffect(() => {
+    setLocalPaused(false);
+  }, [music?.videoId, music?.previewUrl, music?.startedAt]);
 
   function elapsedSeconds() {
     const currentMusic = musicRef.current;
@@ -19,6 +24,25 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
     }
     const clockCorrection = currentMusic.serverNow && currentMusic.receivedAt ? currentMusic.serverNow - currentMusic.receivedAt : 0;
     return Math.max(0, (Date.now() + clockCorrection - currentMusic.startedAt) / 1000);
+  }
+
+  function toggleLocalPlayback() {
+    const player = youtubePlayerRef.current;
+    if (localPaused || needsEnable) {
+      const position = elapsedSeconds();
+      if (isYouTube && player?.seekTo) {
+        player.seekTo(position, true);
+        player.playVideo();
+      } else if (audioRef.current) {
+        audioRef.current.currentTime = position;
+        audioRef.current.play().catch(() => setNeedsEnable(true));
+      }
+      setLocalPaused(false);
+      return;
+    }
+    if (isYouTube) player?.pauseVideo();
+    else audioRef.current?.pause();
+    setLocalPaused(true);
   }
 
   useEffect(() => {
@@ -43,19 +67,9 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
       const expected = elapsedSeconds();
       if (audio) {
         if (Math.abs(audio.currentTime - expected) > 0.4) audio.currentTime = expected;
-        if (audio.paused) audio.play().catch(() => setNeedsEnable(true));
       }
       if (player?.getCurrentTime) {
         if (Math.abs(player.getCurrentTime() - expected) > 0.6) player.seekTo(expected, true);
-        const playerState = player.getPlayerState?.();
-        if (playerState === 2 || playerState === 5) {
-          try {
-            player.seekTo(expected, true);
-            player.playVideo();
-          } catch {
-            setNeedsEnable(true);
-          }
-        }
       }
     }, 2000);
 
@@ -91,18 +105,19 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
             onError: () => setNeedsEnable(true),
             onAutoplayBlocked: () => setNeedsEnable(true),
             onStateChange: (event) => {
-              // A phone or browser can pause the iframe independently. If
-              // the room is still playing, bring this listener back to the
-              // shared timeline. Intentional room pause/stop is left alone.
+              // A phone or browser can pause the iframe independently. A
+              // later Play gesture rejoins the shared timeline. Intentional
+              // room pause/stop is left alone.
               if (musicRef.current?.status !== "playing") return;
-              const paused = event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.CUED;
-              if (paused) {
-                try {
-                  event.target.seekTo(elapsedSeconds(), true);
-                  event.target.playVideo();
-                } catch {
-                  setNeedsEnable(true);
-                }
+              const playing = event.data === YT.PlayerState.PLAYING;
+              if (event.data === YT.PlayerState.PAUSED) {
+                setLocalPaused(true);
+              } else if (playing) {
+                // A listener may press the YouTube play overlay on their
+                // phone. Accept the gesture, but immediately align it to the
+                // room timeline so local playback cannot run ahead or behind.
+                event.target.seekTo(elapsedSeconds(), true);
+                setLocalPaused(false);
               }
             },
           },
@@ -140,7 +155,15 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
       ) : (
         <div>
       <div className="flex items-center gap-3">
-        {!isYouTube && <audio ref={audioRef} src={music.previewUrl} preload="auto" />}
+        {!isYouTube && (
+          <audio
+            ref={audioRef}
+            src={music.previewUrl}
+            preload="auto"
+            onPause={() => setLocalPaused(true)}
+            onPlay={() => setLocalPaused(false)}
+          />
+        )}
         <span className="text-lg shrink-0">🎵</span>
         <div className="flex-1 min-w-0">
           <p className="text-sm text-white truncate">{music.title} — {music.artist}</p>
@@ -149,13 +172,13 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
             {!isYouTube && " · 30s preview"}
             {isYouTube && " · YouTube"}
             {music.status === "paused" && " · paused"}
+            {localPaused && music.status === "playing" && " · paused on this device"}
           </p>
         </div>
         {needsEnable && (
           <button
             onClick={() => {
-              if (isYouTube) youtubePlayerRef.current?.playVideo();
-              else audioRef.current?.play();
+              toggleLocalPlayback();
               setNeedsEnable(false);
             }}
             className="px-3 py-1.5 rounded-lg bg-signal text-ink text-xs font-semibold whitespace-nowrap"
@@ -169,6 +192,16 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
           </button>
         )}
       </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            onClick={toggleLocalPlayback}
+            disabled={music.status !== "playing"}
+            className="px-3 py-1.5 rounded-lg bg-panel2 border border-white/10 text-mist text-xs hover:text-white hover:border-signal/40"
+          >
+            {music.status !== "playing" ? "Room paused" : localPaused ? "Play here" : "Pause here"}
+          </button>
+          <span className="text-[11px] text-mist/60">Only changes playback on your device</span>
+        </div>
         </div>
       )}
       <YouTubeMount active={!stopped && isYouTube} containerRef={youtubeContainerRef} />

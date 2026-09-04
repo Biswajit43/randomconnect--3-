@@ -128,7 +128,7 @@ export function registerGroupRooms(io) {
         return;
       }
       const now = Date.now();
-      roomState.updateMusicStatus(roomId, "stopped");
+      roomState.clearMusic(roomId);
       io.to(roomId).emit("group:music-state", { status: "stopped", serverNow: now });
       if (typeof ack === "function") ack({ ok: true });
     }));
