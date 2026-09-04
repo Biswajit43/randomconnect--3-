@@ -1,5 +1,6 @@
 import { roomState } from "../services/roomState.js";
 import Room from "../models/Room.js";
+import { parseYouTubeId, resolveTrack } from "../services/musicService.js";
 
 /**
  * Group rooms use a full-mesh WebRTC topology: every participant opens a
@@ -89,6 +90,13 @@ export function registerGroupRooms(io) {
 
         socket.emit("group:joined", { roomId, existingPeers, isModerator });
 
+        // Late joiners hear whatever's already playing, roughly in sync —
+        // the player seeks to (now - startedAt) on the client side.
+        const currentMusic = roomState.getMusic(roomId);
+        if (currentMusic) socket.emit("group:music-state", currentMusic);
+
+
+
         socket.to(roomId).emit("group:peer-joined", {
           socketId: socket.id,
           displayName: meta.displayName,
@@ -119,15 +127,82 @@ export function registerGroupRooms(io) {
     });
 
     // --- Room-wide text chat ---
-    socket.on("group:chat-message", ({ roomId, text }) => {
-      if (!text || text.length > 2000) return;
-      io.to(roomId).emit("group:chat-message", {
-        fromId: socket.id,
-        displayName: socket.data.groupMeta?.displayName || "Guest",
-        text,
-        at: Date.now(),
-      });
-    });
+    // --- Room-wide text chat, with moderator-only /play /pause /stop
+    // commands intercepted before they ever reach the chat as plain text.
+    // Moderator status is re-checked here server-side on every command —
+    // never trust a "moderator" flag the frontend might send.
+    socket.on(
+      "group:chat-message",
+      safeHandler("group:chat-message", async ({ roomId, text, clientMessageId }, ack) => {
+        if (typeof ack === "function" && (!roomId || !socket.data.groupRooms?.has(roomId))) {
+          ack({ ok: false, error: "You are not connected to this room." });
+          return;
+        }
+        if (!text || text.length > 2000) {
+          if (typeof ack === "function") ack({ ok: false, error: "Message is empty or too long." });
+          return;
+        }
+
+        const playMatch = text.match(/^\/?play\s+(.+)/i);
+        const pastedYouTubeUrl = parseYouTubeId(text.trim()) ? text.trim() : null;
+        const isPauseOrStop = /^\/?(pause|stop)\s*$/i.test(text.trim());
+
+        if (playMatch || pastedYouTubeUrl || isPauseOrStop) {
+          console.log(`[groupRooms] music command received: ${text.trim()}`);
+          const isMod = await isModeratorOfRoom(roomId, socket.data.fingerprint);
+          if (!isMod) {
+            console.warn("[groupRooms] music command rejected: sender is not a moderator");
+            socket.emit("group:music-error", { message: "Only the host can control room music." });
+            if (typeof ack === "function") ack({ ok: false, error: "Only the host can control room music." });
+            return;
+          }
+
+          if (isPauseOrStop) {
+            const status = text.trim().toLowerCase().replace(/^\//, "") === "pause" ? "paused" : "stopped";
+            roomState.updateMusicStatus(roomId, status);
+            io.to(roomId).emit("group:music-state", { status });
+            if (typeof ack === "function") ack({ ok: true });
+            return;
+          }
+
+          const query = playMatch ? playMatch[1].trim() : pastedYouTubeUrl;
+          try {
+            const track = await resolveTrack(query);
+            if (!track) {
+              socket.emit("group:music-error", { message: `Couldn't find a playable track for "${query}".` });
+              if (typeof ack === "function") ack({ ok: false, error: "Track not found." });
+              return;
+            }
+            const state = {
+              ...track,
+              status: "playing",
+              startedAt: Date.now(),
+              requestedBy: socket.data.groupMeta?.displayName || "Host",
+            };
+            roomState.setMusic(roomId, state);
+            console.log(`[groupRooms] music started: ${track.title} by ${track.artist}`);
+            io.to(roomId).emit("group:music-state", state);
+          } catch (err) {
+            console.error("[groupRooms] music search failed:", err.message);
+            socket.emit("group:music-error", { message: "Music search failed — try again in a moment." });
+            if (typeof ack === "function") ack({ ok: false, error: "Music search failed." });
+            return;
+          }
+          if (typeof ack === "function") ack({ ok: true });
+          return;
+        }
+
+        const message = {
+          fromId: socket.id,
+          displayName: socket.data.groupMeta?.displayName || "Guest",
+          text,
+          at: Date.now(),
+          clientMessageId,
+        };
+        io.to(roomId).emit("group:chat-message", message);
+        if (typeof ack === "function") ack({ ok: true, message });
+      })
+    );
 
     // ---------------------------------------------------------------------
     // Moderator actions — each re-checks the *acting* socket's moderator

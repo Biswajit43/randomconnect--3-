@@ -8,6 +8,7 @@ import CreateRoomModal from "../components/CreateRoomModal.jsx";
 export default function Rooms() {
   const navigate = useNavigate();
   const [rooms, setRooms] = useState([]);
+  const [myRooms, setMyRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -22,7 +23,13 @@ export default function Rooms() {
   }, [navigate]);
 
   const refresh = useCallback(() => {
-    api.listRooms().then(setRooms).catch(() => {}).finally(() => setLoading(false));
+    Promise.all([api.listRooms(), api.listMyRooms(getFingerprint())])
+      .then(([allRooms, ownedRooms]) => {
+        setRooms(allRooms);
+        setMyRooms(ownedRooms);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -40,6 +47,27 @@ export default function Rooms() {
       alert(err.message);
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function renameRoom(room) {
+    const name = window.prompt("New group name", room.name)?.trim();
+    if (!name || name === room.name) return;
+    try {
+      await api.updateRoom(room._id, { name, fingerprint: getFingerprint() });
+      refresh();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function deleteRoom(room) {
+    if (!window.confirm(`Delete "${room.name}"? This cannot be undone.`)) return;
+    try {
+      await api.deleteRoom(room._id, getFingerprint());
+      refresh();
+    } catch (err) {
+      alert(err.message);
     }
   }
 
@@ -99,6 +127,39 @@ export default function Rooms() {
 
         {/* Right: group rooms — anyone can create, anyone can join */}
         <section>
+          {myRooms.length > 0 && (
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="font-mono text-xs tracking-widest text-violet uppercase mb-1">my groups</p>
+                  <h2 className="font-display text-xl font-bold text-white">Your rooms · {myRooms.length}/2</h2>
+                </div>
+                <span className="text-xs text-mist">rename or delete</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {myRooms.map((room) => (
+                  <div key={room._id} className="relative">
+                    <RoomCard room={room} onJoin={(r) => navigate(`/rooms/${r._id}`, { state: { room: r } })} />
+                    <div className="absolute top-3 right-3 flex gap-1.5">
+                      <button
+                        onClick={() => renameRoom(room)}
+                        className="px-2 py-1 rounded-md bg-panel2/90 border border-white/10 text-xs text-white hover:border-signal/50"
+                      >
+                        Edit name
+                      </button>
+                      <button
+                        onClick={() => deleteRoom(room)}
+                        className="px-2 py-1 rounded-md bg-coral/15 border border-coral/30 text-xs text-coral hover:bg-coral/25"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="font-mono text-xs tracking-widest text-signal2 uppercase mb-1">group rooms</p>
@@ -106,9 +167,11 @@ export default function Rooms() {
             </div>
             <button
               onClick={() => setModalOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-violet/15 border border-violet/40 text-violet font-display font-semibold text-sm hover:bg-violet/25 transition whitespace-nowrap"
+              disabled={myRooms.length >= 2}
+              title={myRooms.length >= 2 ? "Delete or edit an existing group before creating another" : "Start a group room"}
+              className="px-4 py-2.5 rounded-xl bg-violet/15 border border-violet/40 text-violet font-display font-semibold text-sm hover:bg-violet/25 transition whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              + Start a room
+              {myRooms.length >= 2 ? "2 groups created" : "+ Start a room"}
             </button>
           </div>
 

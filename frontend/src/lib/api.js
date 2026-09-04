@@ -14,6 +14,10 @@ async function request(path, options = {}) {
 
 export const api = {
   listRooms: () => request("/rooms"),
+  listMyRooms: (fingerprint) => request(`/rooms/mine?fingerprint=${encodeURIComponent(fingerprint)}`),
   getRoom: (id) => request(`/rooms/${id}`),
   createRoom: (payload) => request("/rooms", { method: "POST", body: JSON.stringify(payload) }),
+  updateRoom: (id, payload) => request(`/rooms/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deleteRoom: (id, fingerprint) =>
+    request(`/rooms/${id}?fingerprint=${encodeURIComponent(fingerprint)}`, { method: "DELETE" }),
 };

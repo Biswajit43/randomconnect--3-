@@ -26,9 +26,11 @@ class RoomState {
         mutedFingerprints: new Set(),
         waitingRoom: new Map(),
         kickedFingerprints: new Set(),
+        music: null,
       });
     }
     return this.rooms.get(roomId);
+
   }
 
   join(roomId, socketId, meta) {
@@ -131,6 +133,20 @@ class RoomState {
 
   isKicked(roomId, fingerprint) {
     return this.rooms.get(roomId)?.kickedFingerprints.has(fingerprint) || false;
+  }
+  // --- Music (moderator-controlled room playback) ---------------------------
+
+  setMusic(roomId, state) {
+    this.ensureRoom(roomId).music = state;
+  }
+
+  getMusic(roomId) {
+    return this.rooms.get(roomId)?.music || null;
+  }
+
+  updateMusicStatus(roomId, status) {
+    const room = this.rooms.get(roomId);
+    if (room?.music) room.music.status = status;
   }
 }
 

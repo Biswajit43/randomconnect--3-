@@ -4,6 +4,7 @@ import { socket, getFingerprint, getDisplayName } from "../lib/socket.js";
 import { api } from "../lib/api.js";
 import { useGroupWebRTC } from "../hooks/useGroupWebRTC.js";
 import VideoTile from "../components/VideoTile.jsx";
+import MusicPlayer from "../components/MusicPlayer.jsx";
 
 export default function GroupRoom() {
   const { roomId } = useParams();
@@ -23,10 +24,12 @@ export default function GroupRoom() {
   const [draft, setDraft] = useState("");
   const [banner, setBanner] = useState(null); // transient notice, e.g. "You were muted by the host"
   const [forceMuted, setForceMuted] = useState(false); // true while a moderator has muted this device
+  const [socketReady, setSocketReady] = useState(socket.connected);
   const chatScrollRef = useRef(null);
   const displayName = useRef(getDisplayName() || `Guest-${getFingerprint().slice(0, 4)}`);
   const mediaRequested = useRef(false);
   const localStreamRef = useRef(null); // mirrors localStream for cleanup — see note below
+  const [music, setMusic] = useState(null);
 
   // Someone can land here directly (bookmark, shared link, back button)
   // without going through the name/age gate on Landing — send them there,
@@ -40,7 +43,7 @@ export default function GroupRoom() {
     useGroupWebRTC({ localStream });
 
   useEffect(() => {
-    if (!room) api.getRoom(roomId).then(setRoom).catch(() => {});
+    if (!room) api.getRoom(roomId).then(setRoom).catch(() => { });
   }, [roomId, room]);
 
   useEffect(() => {
@@ -63,15 +66,10 @@ export default function GroupRoom() {
       .then((stream) => {
         localStreamRef.current = stream;
         setLocalStream(stream);
-      })
-      .catch(() => {
-        setMicOn(false);
-        showBanner("Microphone unavailable. You can still join and turn it on later.");
-      })
-      .finally(() => {
         socket.connect();
         socket.emit("identify", { fingerprint: getFingerprint(), ageConfirmed: true });
-      });
+      })
+      .catch(() => setPhase("blocked"));
 
     return () => {
       // Read from the ref, not the `localStream` state variable — this
@@ -108,7 +106,7 @@ export default function GroupRoom() {
       setPeers((prev) => prev.map((p) => (p.socketId === socketId ? { ...p, isModerator: true } : p)));
     }
     function onChatMessage(msg) {
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) => prev.some((item) => item.clientMessageId && item.clientMessageId === msg.clientMessageId) ? prev : [...prev, msg]);
     }
     function onBlocked() {
       setPhase("blocked");
@@ -164,6 +162,25 @@ export default function GroupRoom() {
         return next;
       });
     }
+    function onMusicState(state) {
+      setMusic((prev) => ({ ...prev, ...state }));
+    }
+    function onMusicError({ message }) {
+      showBanner(message);
+    }
+    function onSocketConnect() {
+      setSocketReady(true);
+    }
+    function onSocketDisconnect() {
+      setSocketReady(false);
+    }
+    function onSocketConnectError(error) {
+      setSocketReady(false);
+      showBanner(`Connection failed: ${error.message}`);
+    }
+    socket.on("connect", onSocketConnect);
+    socket.on("disconnect", onSocketDisconnect);
+    socket.on("connect_error", onSocketConnectError);
     socket.on("identified", onIdentified);
     socket.on("group:joined", onJoined);
     socket.on("group:peer-joined", onPeerJoined);
@@ -180,6 +197,8 @@ export default function GroupRoom() {
     socket.on("group:waiting-list", onWaitingList);
     socket.on("group:peer-muted", onPeerMuted);
     socket.on("group:peer-unmuted", onPeerUnmuted);
+    socket.on("group:music-state", onMusicState);
+    socket.on("group:music-error", onMusicError);
 
     return () => {
       socket.off("identified", onIdentified);
@@ -198,6 +217,11 @@ export default function GroupRoom() {
       socket.off("group:waiting-list", onWaitingList);
       socket.off("group:peer-muted", onPeerMuted);
       socket.off("group:peer-unmuted", onPeerUnmuted);
+      socket.off("group:music-state", onMusicState);
+      socket.off("group:music-error", onMusicError);
+      socket.off("connect", onSocketConnect);
+      socket.off("disconnect", onSocketDisconnect);
+      socket.off("connect_error", onSocketConnectError);
     };
   }, [roomId, connectToExistingPeer, closeAll, localStream, navigate]);
 
@@ -216,8 +240,8 @@ export default function GroupRoom() {
   }, [messages]);
 
   function toggleMic() {
-    if (forceMuted || !localStream?.getAudioTracks().length) return;
-    localStream.getAudioTracks().forEach((t) => (t.enabled = !t.enabled));
+    if (forceMuted) return; // host-imposed mute — can't self-override, see onForceMute
+    localStream?.getAudioTracks().forEach((t) => (t.enabled = !t.enabled));
     setMicOn((v) => !v);
   }
 
@@ -227,11 +251,8 @@ export default function GroupRoom() {
       try {
         const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
         const track = videoStream.getVideoTracks()[0];
-        const nextStream = localStream || new MediaStream();
-        nextStream.addTrack(track);
-        localStreamRef.current = nextStream;
-        setLocalStream(nextStream);
-        if (phase === "joined") await addVideoTrackToAllPeers(track, nextStream);
+        localStream.addTrack(track);
+        if (phase === "joined") await addVideoTrackToAllPeers(track, localStream);
         setCamOn(true);
       } catch {
         alert("Camera access was denied or unavailable.");
@@ -249,8 +270,19 @@ export default function GroupRoom() {
   function sendMessage() {
     const text = draft.trim();
     if (!text) return;
-    socket.emit("group:chat-message", { roomId, text });
-    setDraft("");
+    if (!socket.connected || !socketReady) {
+      showBanner("Still connecting to the room. Try again in a moment.");
+      return;
+    }
+    const clientMessageId = crypto.randomUUID();
+    socket.emit("group:chat-message", { roomId, text, clientMessageId }, (result) => {
+      if (!result?.ok) {
+        showBanner(result?.error || "Message could not be sent.");
+        return;
+      }
+      if (result.message) setMessages((prev) => prev.some((item) => item.clientMessageId === clientMessageId) ? prev : [...prev, result.message]);
+      setDraft("");
+    });
   }
   // --- Moderator actions ---
   const mute = (targetId) => socket.emit("group:mod-mute", { roomId, targetId });
@@ -332,6 +364,11 @@ export default function GroupRoom() {
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 min-h-0">
         <div className="flex flex-col gap-4 min-h-0">
+          <MusicPlayer
+            music={music}
+            isModerator={isModerator}
+            onStop={() => socket.emit("group:chat-message", { roomId, text: "/stop" })}
+          />
           <div className={`grid ${gridCols} gap-3 flex-1 content-start`}>
             <VideoTile stream={localStream} muted mirrored label={`You (${displayName.current})`} />
             {peers.map((p) => (
@@ -363,21 +400,19 @@ export default function GroupRoom() {
               onClick={toggleMic}
               disabled={forceMuted}
               title={forceMuted ? "Muted by the host" : micOn ? "Mute mic" : "Unmute mic"}
-              className={`w-12 h-12 rounded-full flex items-center justify-center border ${
-                forceMuted
-                  ? "bg-coral/10 border-coral/30 text-coral cursor-not-allowed opacity-70"
-                  : micOn
+              className={`w-12 h-12 rounded-full flex items-center justify-center border ${forceMuted
+                ? "bg-coral/10 border-coral/30 text-coral cursor-not-allowed opacity-70"
+                : micOn
                   ? "bg-panel2 border-white/10 text-white"
                   : "bg-coral/10 border-coral/30 text-coral"
-              }`}
+                }`}
             >
               {micOn && !forceMuted ? "🎙️" : "🔇"}
             </button>
             <button
               onClick={toggleCam}
-              className={`w-12 h-12 rounded-full flex items-center justify-center border ${
-                camOn ? "bg-panel2 border-white/10 text-white" : "bg-coral/10 border-coral/30 text-coral"
-              }`}
+              className={`w-12 h-12 rounded-full flex items-center justify-center border ${camOn ? "bg-panel2 border-white/10 text-white" : "bg-coral/10 border-coral/30 text-coral"
+                }`}
               title={camOn ? "Turn camera off" : "Turn camera on"}
             >
               {camOn ? "📹" : "🚫"}
@@ -412,7 +447,7 @@ export default function GroupRoom() {
             </div>
           )}
 
-          <div className="flex-1 flex flex-col min-h-[280px] lg:min-h-0 bg-panel rounded-2xl border border-white/5 overflow-hidden">
+          <div className="flex-1 flex flex-col bg-panel rounded-2xl border border-white/5 overflow-hidden min-h-0">
             <div className="px-4 py-3 border-b border-white/5 font-display text-sm text-mist">Room chat</div>
             <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
               {messages.map((m, i) => (
