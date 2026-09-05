@@ -79,6 +79,7 @@ async function canActOnTarget(socket, roomId, target) {
 
 async function canControlMusic(socket, roomId) {
   if (!roomId || !socket.data.groupRooms?.has(roomId)) return false;
+  if (roleOf(socket) === "developer") return true;
   return isModeratorOfRoom(roomId, socket.data.fingerprint);
 }
 
@@ -360,6 +361,21 @@ export function registerGroupRooms(io) {
 
         target.emit("group:promoted", {});
         io.to(roomId).emit("group:peer-promoted", { socketId: targetId });
+      })
+    );
+
+    socket.on(
+      "group:mod-demote",
+      safeHandler("group:mod-demote", async ({ roomId, targetId }) => {
+        if (roleOf(socket) !== "developer") return;
+        const target = io.sockets.sockets.get(targetId);
+        if (!target?.data?.groupMeta || target.data.groupMeta.role === "developer") return;
+        if (!target.data.groupRooms?.has(roomId) || !socket.data.groupRooms?.has(roomId)) return;
+
+        await Room.findByIdAndUpdate(roomId, { $pull: { moderatorFingerprints: target.data.fingerprint } });
+        target.data.isModeratorByRoom = target.data.isModeratorByRoom || {};
+        target.data.isModeratorByRoom[roomId] = false;
+        io.to(roomId).emit("group:peer-demoted", { socketId: targetId });
       })
     );
 

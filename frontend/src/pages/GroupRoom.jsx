@@ -84,6 +84,7 @@ export default function GroupRoom() {
     }
     function onPeerLeft({ socketId }) { setPeers((current) => current.filter((peer) => peer.socketId !== socketId)); }
     function onPeerPromoted({ socketId }) { setPeers((current) => current.map((peer) => peer.socketId === socketId ? { ...peer, isModerator: true } : peer)); }
+    function onPeerDemoted({ socketId }) { setPeers((current) => current.map((peer) => peer.socketId === socketId ? { ...peer, isModerator: false } : peer)); }
     function onChatMessage(message) { setMessages((current) => current.some((item) => item.clientMessageId === message.clientMessageId) ? current : [...current, message]); }
     function onForceMute() { localStream?.getAudioTracks().forEach((track) => { track.enabled = false; }); setMicOn(false); setForceMuted(true); showBanner("The host muted your mic."); }
     function onForceUnmute() { setForceMuted(false); showBanner("Your mic is available again."); }
@@ -101,7 +102,7 @@ export default function GroupRoom() {
 
     socket.on("connect", onConnect); socket.on("disconnect", onDisconnect);
     socket.on("identified", onIdentified); socket.on("group:joined", onJoined);
-    socket.on("group:peer-joined", onPeerJoined); socket.on("group:peer-left", onPeerLeft); socket.on("group:peer-promoted", onPeerPromoted);
+    socket.on("group:peer-joined", onPeerJoined); socket.on("group:peer-left", onPeerLeft); socket.on("group:peer-promoted", onPeerPromoted); socket.on("group:peer-demoted", onPeerDemoted);
     socket.on("group:chat-message", onChatMessage); socket.on("group:force-mute", onForceMute);
     socket.on("group:force-unmute", onForceUnmute); socket.on("group:moved-to-waiting", onMovedToWaiting);
     socket.on("group:admitted", onAdmitted); socket.on("group:removed", onRemoved);
@@ -110,7 +111,7 @@ export default function GroupRoom() {
     socket.on("group:music-error", onMusicError); socket.on("group:waiting-list", onWaitingList);
 
     return () => {
-      ["connect", "disconnect", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list"].forEach((event) => socket.off(event));
+      ["connect", "disconnect", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list"].forEach((event) => socket.off(event));
     };
   }, [closeAll, connectToExistingPeer, localStream, navigate, roomId]);
 
@@ -164,7 +165,7 @@ export default function GroupRoom() {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 min-h-0">
         <div className="flex flex-col gap-4 min-h-0">
           <MusicPlayer music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />
-          <div className={`grid ${gridCols} gap-3 flex-1 content-start animate-enter`}><VideoTile stream={localStream} muted mirrored label={displayName.current} role={role} />{peers.map((peer) => <div key={peer.socketId} className="relative"><VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName} role={peer.role} />{mutedPeers.has(peer.socketId) && <span className="absolute top-2 left-2 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}{isModerator && !peer.isModerator && <ModMenu isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} />}</div>)}</div>
+          <div className={`grid ${gridCols} gap-3 flex-1 content-start animate-enter`}><VideoTile stream={localStream} muted mirrored label={displayName.current} role={role} />{peers.map((peer) => <div key={peer.socketId} className="relative"><VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName} role={peer.role} />{mutedPeers.has(peer.socketId) && <span className="absolute top-2 left-2 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}{isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator) && <ModMenu isDeveloper={role === "developer"} isModerator={peer.isModerator} isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} onDemote={() => mod("group:mod-demote", peer.socketId)} />}</div>)}</div>
           <div className="sticky bottom-0 z-20 flex items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/85 backdrop-blur-md border-t border-white/5"><IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton><IconButton onClick={toggleCam} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton><button onClick={leave} className="px-6 py-3 rounded-full bg-coral text-ink font-display font-semibold text-sm hover:brightness-110 active:scale-95 transition shadow-lg shadow-coral/10">Leave room</button></div>
         </div>
         <aside className="flex flex-col gap-4 min-h-[380px] lg:min-h-0">
@@ -178,9 +179,9 @@ export default function GroupRoom() {
 
 function IconButton({ active, disabled, onClick, label, children }) { return <button onClick={onClick} disabled={disabled} aria-label={label} title={label} className={`w-12 h-12 rounded-full flex items-center justify-center border active:scale-95 transition ${disabled ? "bg-coral/10 border-coral/30 text-coral opacity-70 cursor-not-allowed" : active ? "bg-panel2 border-white/10 text-white" : "bg-coral/10 border-coral/30 text-coral"}`}>{children}</button>; }
 
-function ModMenu({ isMuted, onMute, onUnmute, onWaiting, onRemove, onPromote }) {
+function ModMenu({ isDeveloper, isModerator, isMuted, onMute, onUnmute, onWaiting, onRemove, onPromote, onDemote }) {
   const [open, setOpen] = useState(false);
-  const items = isMuted ? [["Unmute", onUnmute], ["Waiting room", onWaiting], ["Make moderator", onPromote], ["Remove", onRemove]] : [["Mute mic", onMute], ["Waiting room", onWaiting], ["Make moderator", onPromote], ["Remove", onRemove]];
+  const items = isMuted ? [["Unmute", onUnmute], ["Waiting room", onWaiting], ...(!isModerator ? [["Make moderator", onPromote]] : []), ...(isDeveloper && isModerator ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]] : [["Mute mic", onMute], ["Waiting room", onWaiting], ...(!isModerator ? [["Make moderator", onPromote]] : []), ...(isDeveloper && isModerator ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]];
   return <div className="absolute top-2 right-2 z-10"><button onClick={() => setOpen((current) => !current)} className="text-[11px] px-2 py-1 rounded-md bg-black/60 text-signal2 hover:bg-signal/20 backdrop-blur">Host ···</button>{open && <div className="absolute right-0 mt-1 w-40 bg-panel2 border border-white/10 rounded-lg overflow-hidden text-sm shadow-xl">{items.map(([label, action]) => <button key={label} onClick={() => { action(); setOpen(false); }} className="w-full text-left px-3 py-2 text-white/90 hover:bg-white/5">{label}</button>)}</div>}</div>;
 }
 
