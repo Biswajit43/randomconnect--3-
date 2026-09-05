@@ -79,19 +79,24 @@ export default function GroupRoom() {
       socket.emit("group:join", { roomId, displayName: displayName.current });
     }
     function onJoined({ existingPeers, isModerator: moderator }) {
-      setPhase("joined"); setPeers(existingPeers); setIsModerator(moderator);
-      setMutedPeers(new Set(existingPeers.filter((peer) => peer.isMuted).map((peer) => peer.socketId)));
-      existingPeers.forEach((peer) => connectToExistingPeer(peer.socketId));
+      const safePeers = Array.isArray(existingPeers) ? existingPeers.filter((peer) => peer && typeof peer === "object") : [];
+      setPhase("joined"); setPeers(safePeers); setIsModerator(Boolean(moderator));
+      setMutedPeers(new Set(safePeers.filter((peer) => peer.isMuted).map((peer) => peer.socketId)));
+      safePeers.forEach((peer) => peer.socketId && connectToExistingPeer(peer.socketId));
     }
     function onPeerJoined(peer) {
+      if (!peer || typeof peer !== "object") return;
       setPeers((current) => [...current, peer]);
-      if (peer.role === "developer") showBanner(`◈ DEVELOPER • ${peer.displayName} joined`);
-      else if (peer.role === "admin") showBanner(`ADMIN • ${peer.displayName} joined`);
+      if (peer.role === "developer") showBanner(`◈ DEVELOPER • ${peer.displayName || "Developer"} joined`);
+      else if (peer.role === "admin") showBanner(`ADMIN • ${peer.displayName || "Admin"} joined`);
     }
     function onPeerLeft({ socketId }) { setPeers((current) => current.filter((peer) => peer.socketId !== socketId)); }
     function onPeerPromoted({ socketId }) { setPeers((current) => current.map((peer) => peer.socketId === socketId ? { ...peer, isModerator: true } : peer)); }
     function onPeerDemoted({ socketId }) { setPeers((current) => current.map((peer) => peer.socketId === socketId ? { ...peer, isModerator: false } : peer)); }
-    function onChatMessage(message) { setMessages((current) => current.some((item) => item.clientMessageId === message.clientMessageId) ? current : [...current, message]); }
+    function onChatMessage(message) {
+      if (!message || typeof message !== "object") return;
+      setMessages((current) => current.some((item) => item?.clientMessageId === message.clientMessageId) ? current : [...current, message]);
+    }
     function onForceMute() { localStream?.getAudioTracks().forEach((track) => { track.enabled = false; }); setMicOn(false); setForceMuted(true); showBanner("The host muted your mic."); }
     function onForceUnmute() { setForceMuted(false); showBanner("Your mic is available again."); }
     function onMovedToWaiting() { closeAll(); setPeers([]); setPhase("waiting"); }
@@ -102,7 +107,7 @@ export default function GroupRoom() {
     function onPromoted() { setIsModerator(true); showBanner("You are now a room host."); }
     function onMusicState(next) { setMusic((current) => next.status === "stopped" ? null : { ...current, ...next, receivedAt: Date.now() }); }
     function onMusicError({ message }) { showBanner(message); }
-    function onWaitingList({ waiting }) { setWaitingList(waiting); }
+    function onWaitingList({ waiting }) { setWaitingList(Array.isArray(waiting) ? waiting : []); }
     function identify() {
       if (identifySent.current) return;
       identifySent.current = true;
@@ -184,6 +189,9 @@ export default function GroupRoom() {
   if (phase === "connecting-media") return <EmptyState title="Joining your room" text="Connecting securely…" />;
 
   const totalTiles = peers.length + 1;
+  const visiblePeers = peers.filter((peer) => peer && typeof peer === "object");
+  const visibleWaiting = waitingList.filter((person) => person && typeof person === "object");
+  const visibleMessages = messages.filter((message) => message && typeof message === "object");
   const gridCols = totalTiles <= 2 ? "grid-cols-1 sm:grid-cols-2" : totalTiles <= 4 ? "grid-cols-2" : "grid-cols-2 md:grid-cols-3";
   return (
     <div className="min-h-screen flex flex-col px-4 md:px-8 py-4">
@@ -196,12 +204,12 @@ export default function GroupRoom() {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 min-h-0">
         <div className="flex flex-col gap-4 min-h-0">
           <MusicPlayer music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />
-          <div className={`grid ${gridCols} gap-3 flex-1 content-start animate-enter`}><VideoTile stream={localStream} muted mirrored label={displayName.current} role={role} />{peers.map((peer) => <div key={peer.socketId} className="relative"><VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName} role={peer.role} />{mutedPeers.has(peer.socketId) && <span className="absolute top-2 left-2 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}{isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator) && <ModMenu isDeveloper={role === "developer"} isModerator={peer.isModerator} isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} onDemote={() => mod("group:mod-demote", peer.socketId)} />}</div>)}</div>
+          <div className={`grid ${gridCols} gap-3 flex-1 content-start animate-enter`}><VideoTile stream={localStream} muted mirrored label={displayName.current} role={role} />{visiblePeers.map((peer) => <div key={peer.socketId} className="relative"><VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName || "Guest"} role={peer.role || "user"} />{mutedPeers.has(peer.socketId) && <span className="absolute top-2 left-2 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}{isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator) && <ModMenu isDeveloper={role === "developer"} isModerator={peer.isModerator} isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} onDemote={() => mod("group:mod-demote", peer.socketId)} />}</div>)}</div>
           <div className="sticky bottom-0 z-20 flex items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/85 backdrop-blur-md border-t border-white/5"><IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton><IconButton onClick={toggleCam} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton><button onClick={leave} className="px-6 py-3 rounded-full bg-coral text-ink font-display font-semibold text-sm hover:brightness-110 active:scale-95 transition shadow-lg shadow-coral/10">Leave room</button></div>
         </div>
         <aside className="flex flex-col gap-4 min-h-[380px] lg:min-h-0">
-          {isModerator && waitingList.length > 0 && <div className="bg-panel/85 rounded-2xl border border-violet/30 overflow-hidden surface-lift"><div className="px-4 py-3 border-b border-white/5 font-display text-sm text-violet">Waiting room · {waitingList.length}</div><div className="p-3 space-y-2">{waitingList.map((person) => <div key={person.socketId} className="flex items-center justify-between text-sm"><span className="text-white/90">{person.displayName}</span><div className="flex gap-1.5"><button onClick={() => mod("group:mod-admit", person.socketId)} className="px-2 py-1 rounded-md bg-signal/15 text-signal2 text-xs">Admit</button><button onClick={() => mod("group:mod-deny", person.socketId)} className="px-2 py-1 rounded-md bg-coral/15 text-coral text-xs">Deny</button></div></div>)}</div></div>}
-          <div className="flex-1 flex flex-col bg-panel/85 rounded-2xl border border-white/10 overflow-hidden min-h-0 surface-lift"><div className="px-4 py-3 border-b border-white/5 flex items-center justify-between"><div><p className="font-display text-sm text-white">Room chat</p><p className="text-[11px] text-mist/60 mt-0.5">Say hi and keep it respectful.</p></div>{isModerator && <button onClick={() => setDraft("/play ")} className="px-2 py-1 rounded-md bg-signal/10 text-signal2 text-[11px] hover:bg-signal/20">+ song</button>}</div><div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">{messages.length === 0 && <p className="text-sm text-mist/60">The room is quiet. Say hello.</p>}{messages.map((message, index) => <div key={message.clientMessageId || index} className="text-sm"><span className="text-signal2 font-medium">{message.displayName}: </span><span className="text-white/90 break-words">{message.text}</span></div>)}</div><div className="p-3 border-t border-white/5 flex gap-2"><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === "Enter" && sendMessage()} placeholder="Say something…" maxLength={2000} className="flex-1 bg-panel2 rounded-lg px-3 py-2 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:outline-signal" /><button onClick={sendMessage} className="px-4 py-2 rounded-lg bg-signal text-ink text-sm font-semibold hover:brightness-110 transition">Send</button></div></div>
+          {isModerator && visibleWaiting.length > 0 && <div className="bg-panel/85 rounded-2xl border border-violet/30 overflow-hidden surface-lift"><div className="px-4 py-3 border-b border-white/5 font-display text-sm text-violet">Waiting room · {visibleWaiting.length}</div><div className="p-3 space-y-2">{visibleWaiting.map((person) => <div key={person.socketId} className="flex items-center justify-between text-sm"><span className="text-white/90">{person.displayName || "Guest"}</span><div className="flex gap-1.5"><button onClick={() => mod("group:mod-admit", person.socketId)} className="px-2 py-1 rounded-md bg-signal/15 text-signal2 text-xs">Admit</button><button onClick={() => mod("group:mod-deny", person.socketId)} className="px-2 py-1 rounded-md bg-coral/15 text-coral text-xs">Deny</button></div></div>)}</div></div>}
+          <div className="flex-1 flex flex-col bg-panel/85 rounded-2xl border border-white/10 overflow-hidden min-h-0 surface-lift"><div className="px-4 py-3 border-b border-white/5 flex items-center justify-between"><div><p className="font-display text-sm text-white">Room chat</p><p className="text-[11px] text-mist/60 mt-0.5">Say hi and keep it respectful.</p></div>{isModerator && <button onClick={() => setDraft("/play ")} className="px-2 py-1 rounded-md bg-signal/10 text-signal2 text-[11px] hover:bg-signal/20">+ song</button>}</div><div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">{visibleMessages.length === 0 && <p className="text-sm text-mist/60">The room is quiet. Say hello.</p>}{visibleMessages.map((message, index) => <div key={message.clientMessageId || index} className="text-sm"><span className="text-signal2 font-medium">{message.displayName || "Guest"}: </span><span className="text-white/90 break-words">{message.text || ""}</span></div>)}</div><div className="p-3 border-t border-white/5 flex gap-2"><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === "Enter" && sendMessage()} placeholder="Say something…" maxLength={2000} className="flex-1 bg-panel2 rounded-lg px-3 py-2 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:outline-signal" /><button onClick={sendMessage} className="px-4 py-2 rounded-lg bg-signal text-ink text-sm font-semibold hover:brightness-110 transition">Send</button></div></div>
         </aside>
       </div>
     </div>
