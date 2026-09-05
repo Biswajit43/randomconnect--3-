@@ -293,7 +293,13 @@ export function registerGroupRooms(io) {
               delete resumedMusic.pausedPosition;
               roomState.setMusic(roomId, resumedMusic);
             }
-            const nextState = command === "stop" ? { status: "stopped", serverNow: now } : roomState.getMusic(roomId);
+            const nextState = command === "stop"
+              ? { status: "stopped", serverNow: now }
+              : roomState.getMusic(roomId);
+            if (!nextState) {
+              if (typeof ack === "function") ack({ ok: true });
+              return;
+            }
             io.to(roomId).emit("group:music-state", nextState);
             if (typeof ack === "function") ack({ ok: true });
             return;
@@ -373,9 +379,10 @@ export function registerGroupRooms(io) {
     socket.on(
       "group:mod-demote",
       safeHandler("group:mod-demote", async ({ roomId, targetId }) => {
-        if (roleOf(socket) !== "developer") return;
+        const actorRole = roleOf(socket);
+        if (actorRole !== "developer" && actorRole !== "admin") return;
         const target = io.sockets.sockets.get(targetId);
-        if (!target?.data?.groupMeta || target.data.groupMeta.role === "developer") return;
+        if (!target?.data?.groupMeta || target.data.groupMeta.role !== "user") return;
         if (!target.data.groupRooms?.has(roomId) || !socket.data.groupRooms?.has(roomId)) return;
 
         await Room.findByIdAndUpdate(roomId, { $pull: { moderatorFingerprints: target.data.fingerprint } });
