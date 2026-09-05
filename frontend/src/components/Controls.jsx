@@ -5,6 +5,7 @@ export default function Controls({
   onToggleCam,
   onSkip,
   onStop,
+  onReport,
 }) {
   return (
     <div className="flex items-center justify-center flex-wrap gap-2 sm:gap-3 py-4">
@@ -27,6 +28,13 @@ export default function Controls({
         className="px-4 sm:px-5 py-3 rounded-full bg-panel2 text-mist font-display font-medium text-sm border border-white/10 hover:text-white active:scale-95 transition"
       >
         Stop
+      </button>
+
+      <button
+        onClick={onReport}
+        className="px-4 sm:px-5 py-3 rounded-full bg-coral/10 text-coral font-display font-medium text-sm border border-coral/30 hover:bg-coral/20 active:scale-95 transition"
+      >
+        Report
       </button>
 
     </div>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useParams, useNavigate } from "react-router-dom";
-import { socket, getFingerprint, getDisplayName } from "../lib/socket.js";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { socket, getDisplayName, getFingerprint } from "../lib/socket.js";
 import { api } from "../lib/api.js";
 import { useGroupWebRTC } from "../hooks/useGroupWebRTC.js";
 import VideoTile from "../components/VideoTile.jsx";
@@ -10,77 +10,50 @@ export default function GroupRoom() {
   const { roomId } = useParams();
   const { state } = useLocation();
   const navigate = useNavigate();
-
   const [room, setRoom] = useState(state?.room || null);
   const [localStream, setLocalStream] = useState(null);
   const [micOn, setMicOn] = useState(false);
-  const [camOn, setCamOn] = useState(false); // camera stays off until the user turns it on
-  const [peers, setPeers] = useState([]); // [{socketId, displayName, isModerator}]
-  const [phase, setPhase] = useState("connecting-media"); // connecting-media | joined | waiting | blocked
+  const [camOn, setCamOn] = useState(false);
+  const [peers, setPeers] = useState([]);
+  const [phase, setPhase] = useState("connecting-media");
   const [isModerator, setIsModerator] = useState(false);
   const [waitingList, setWaitingList] = useState([]);
   const [mutedPeers, setMutedPeers] = useState(() => new Set());
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
-  const [banner, setBanner] = useState(null); // transient notice, e.g. "You were muted by the host"
-  const [forceMuted, setForceMuted] = useState(false); // true while a moderator has muted this device
+  const [banner, setBanner] = useState(null);
+  const [forceMuted, setForceMuted] = useState(false);
+  const [music, setMusic] = useState(null);
   const [socketReady, setSocketReady] = useState(socket.connected);
   const chatScrollRef = useRef(null);
   const displayName = useRef(getDisplayName() || `Guest-${getFingerprint().slice(0, 4)}`);
+  const localStreamRef = useRef(null);
   const mediaRequested = useRef(false);
-  const localStreamRef = useRef(null); // mirrors localStream for cleanup — see note below
-  const [music, setMusic] = useState(null);
+  const { remoteStreams, connectToExistingPeer, setRoomId, closeAll, addVideoTrackToAllPeers } = useGroupWebRTC({ localStream });
 
-  // Someone can land here directly (bookmark, shared link, back button)
-  // without going through the name/age gate on Landing — send them there,
-  // but remember where they were headed so Landing can send them right back
-  // instead of dropping them at the general rooms list.
   useEffect(() => {
     if (!getDisplayName()) navigate("/", { state: { returnTo: `/rooms/${roomId}` } });
   }, [navigate, roomId]);
 
-  const { remoteStreams, connectToExistingPeer, setRoomId, closeAll, addVideoTrackToAllPeers } =
-    useGroupWebRTC({ localStream });
-
   useEffect(() => {
-    if (!room) api.getRoom(roomId).then(setRoom).catch(() => { });
-  }, [roomId, room]);
+    if (!room) api.getRoom(roomId).then(setRoom).catch(() => {});
+  }, [room, roomId]);
 
-  useEffect(() => {
-    setRoomId(roomId);
-  }, [roomId, setRoomId]);
+  useEffect(() => setRoomId(roomId), [roomId, setRoomId]);
 
-  function showBanner(text) {
-    setBanner(text);
-    setTimeout(() => setBanner((b) => (b === text ? null : b)), 4000);
-  }
-
-  // 1. Get mic only — camera defaults to off regardless of room mode, the
-  // user opts in explicitly. See toggleCam.
   useEffect(() => {
     if (mediaRequested.current) return;
     mediaRequested.current = true;
-
-    navigator.mediaDevices
-      .getUserMedia({ video: false, audio: true })
-      .then((stream) => {
-        // Joining is listen-only by default. The user explicitly enables the
-        // microphone with the control below.
-        stream.getAudioTracks().forEach((track) => (track.enabled = false));
-        localStreamRef.current = stream;
-        setLocalStream(stream);
-        socket.connect();
-        socket.emit("identify", { fingerprint: getFingerprint(), ageConfirmed: true });
-      })
-      .catch(() => setPhase("blocked"));
+    navigator.mediaDevices.getUserMedia({ video: false, audio: true }).then((stream) => {
+      stream.getAudioTracks().forEach((track) => { track.enabled = false; });
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+      socket.connect();
+      socket.emit("identify", { fingerprint: getFingerprint(), displayName: displayName.current, ageConfirmed: true });
+    }).catch(() => setPhase("blocked"));
 
     return () => {
-      // Read from the ref, not the `localStream` state variable — this
-      // effect only runs once (empty deps), so its closure over `localStream`
-      // is permanently the initial `null` and the tracks would never
-      // actually stop without this, leaving the mic/camera running and
-      // causing "device already in use" errors the next time you join.
-      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
       closeAll();
       socket.emit("group:leave", { roomId });
       socket.disconnect();
@@ -89,447 +62,117 @@ export default function GroupRoom() {
   }, []);
 
   useEffect(() => {
-    function onIdentified() {
-      socket.emit("group:join", { roomId, displayName: displayName.current });
+    const showBanner = (text) => {
+      setBanner(text);
+      window.setTimeout(() => setBanner((current) => current === text ? null : current), 3800);
+    };
+    function onIdentified() { socket.emit("group:join", { roomId, displayName: displayName.current }); }
+    function onJoined({ existingPeers, isModerator: moderator }) {
+      setPhase("joined"); setPeers(existingPeers); setIsModerator(moderator);
+      setMutedPeers(new Set(existingPeers.filter((peer) => peer.isMuted).map((peer) => peer.socketId)));
+      existingPeers.forEach((peer) => connectToExistingPeer(peer.socketId));
     }
-    function onJoined({ existingPeers, isModerator: mod }) {
-      setPhase("joined");
-      setPeers(existingPeers);
-      setIsModerator(mod);
-      setMutedPeers(new Set(existingPeers.filter((p) => p.isMuted).map((p) => p.socketId)));
-      existingPeers.forEach((p) => connectToExistingPeer(p.socketId));
-    }
-    function onPeerJoined({ socketId, displayName: name, isModerator: mod }) {
-      setPeers((prev) => [...prev, { socketId, displayName: name, isModerator: mod }]);
-    }
-    function onPeerLeft({ socketId }) {
-      setPeers((prev) => prev.filter((p) => p.socketId !== socketId));
-    }
-    function onPeerPromoted({ socketId }) {
-      setPeers((prev) => prev.map((p) => (p.socketId === socketId ? { ...p, isModerator: true } : p)));
-    }
-    function onChatMessage(msg) {
-      setMessages((prev) => prev.some((item) => item.clientMessageId && item.clientMessageId === msg.clientMessageId) ? prev : [...prev, msg]);
-    }
-    function onBlocked() {
-      setPhase("blocked");
-    }
-    function onForceMute() {
-      localStream?.getAudioTracks().forEach((t) => (t.enabled = false));
-      setMicOn(false);
-      setForceMuted(true);
-      showBanner("The host muted your mic.");
-    }
-    function onForceUnmute() {
-      // Deliberately does NOT re-enable the mic track automatically — a
-      // moderator lifting a mute shouldn't mean the server can switch
-      // someone's microphone back on without their say-so. It just lifts
-      // the restriction; the person still has to choose to unmute.
-      setForceMuted(false);
-      showBanner("The host lifted your mute — turn your mic back on whenever you're ready.");
-    }
-    function onMovedToWaiting() {
-      closeAll();
-      setPeers([]);
-      setPhase("waiting");
-    }
-    function onAdmitted() {
-      setPeers([]);
-      setMutedPeers(new Set());
-      setForceMuted(false);
-      setPhase("connecting-media");
-      socket.emit("group:join", { roomId, displayName: displayName.current });
-    }
-    function onRemoved({ reason }) {
-      alert(reason || "You were removed from this room.");
-      navigate("/rooms");
-    }
-    function onPromoted() {
-      setIsModerator(true);
-      showBanner("You're now a moderator of this room.");
-    }
-    function onWaitingList({ waiting }) {
-      setWaitingList(waiting);
-    }
-    // Defensive mute: even if the muted person's own client ignores
-    // group:force-mute, everyone else stops playing their incoming audio
-    // locally the moment the moderator acts (see the effect below that
-    // applies mutedPeers to the actual MediaStreamTrack).
-    function onPeerMuted({ socketId }) {
-      setMutedPeers((prev) => new Set(prev).add(socketId));
-    }
-    function onPeerUnmuted({ socketId }) {
-      setMutedPeers((prev) => {
-        const next = new Set(prev);
-        next.delete(socketId);
-        return next;
-      });
-    }
-    function onMusicState(state) {
-      // Keep the local receipt time so the player can estimate network delay
-      // and follow the server timeline instead of each browser's clock.
-      setMusic((prev) => state.status === "stopped" ? null : { ...prev, ...state, receivedAt: Date.now() });
-    }
-    function onMusicError({ message }) {
-      showBanner(message);
-    }
-    function onSocketConnect() {
-      setSocketReady(true);
-    }
-    function onSocketDisconnect() {
-      setSocketReady(false);
-    }
-    function onSocketConnectError(error) {
-      setSocketReady(false);
-      showBanner(`Connection failed: ${error.message}`);
-    }
-    socket.on("connect", onSocketConnect);
-    socket.on("disconnect", onSocketDisconnect);
-    socket.on("connect_error", onSocketConnectError);
-    socket.on("identified", onIdentified);
-    socket.on("group:joined", onJoined);
-    socket.on("group:peer-joined", onPeerJoined);
-    socket.on("group:peer-left", onPeerLeft);
-    socket.on("group:peer-promoted", onPeerPromoted);
-    socket.on("group:chat-message", onChatMessage);
-    socket.on("blocked", onBlocked);
-    socket.on("group:force-mute", onForceMute);
-    socket.on("group:force-unmute", onForceUnmute);
-    socket.on("group:moved-to-waiting", onMovedToWaiting);
-    socket.on("group:admitted", onAdmitted);
-    socket.on("group:removed", onRemoved);
-    socket.on("group:promoted", onPromoted);
-    socket.on("group:waiting-list", onWaitingList);
-    socket.on("group:peer-muted", onPeerMuted);
-    socket.on("group:peer-unmuted", onPeerUnmuted);
-    socket.on("group:music-state", onMusicState);
-    socket.on("group:music-error", onMusicError);
+    function onPeerJoined(peer) { setPeers((current) => [...current, peer]); }
+    function onPeerLeft({ socketId }) { setPeers((current) => current.filter((peer) => peer.socketId !== socketId)); }
+    function onPeerPromoted({ socketId }) { setPeers((current) => current.map((peer) => peer.socketId === socketId ? { ...peer, isModerator: true } : peer)); }
+    function onChatMessage(message) { setMessages((current) => current.some((item) => item.clientMessageId === message.clientMessageId) ? current : [...current, message]); }
+    function onForceMute() { localStream?.getAudioTracks().forEach((track) => { track.enabled = false; }); setMicOn(false); setForceMuted(true); showBanner("The host muted your mic."); }
+    function onForceUnmute() { setForceMuted(false); showBanner("Your mic is available again."); }
+    function onMovedToWaiting() { closeAll(); setPeers([]); setPhase("waiting"); }
+    function onAdmitted() { setPeers([]); setForceMuted(false); setPhase("connecting-media"); socket.emit("group:join", { roomId, displayName: displayName.current }); }
+    function onRemoved({ reason }) { alert(reason || "You were removed from this room."); navigate("/rooms"); }
+    function onPeerMuted({ socketId }) { setMutedPeers((current) => new Set(current).add(socketId)); }
+    function onPeerUnmuted({ socketId }) { setMutedPeers((current) => { const next = new Set(current); next.delete(socketId); return next; }); }
+    function onPromoted() { setIsModerator(true); showBanner("You are now a room host."); }
+    function onMusicState(next) { setMusic((current) => next.status === "stopped" ? null : { ...current, ...next, receivedAt: Date.now() }); }
+    function onMusicError({ message }) { showBanner(message); }
+    function onWaitingList({ waiting }) { setWaitingList(waiting); }
+    function onConnect() { setSocketReady(true); }
+    function onDisconnect() { setSocketReady(false); }
+
+    socket.on("connect", onConnect); socket.on("disconnect", onDisconnect);
+    socket.on("identified", onIdentified); socket.on("group:joined", onJoined);
+    socket.on("group:peer-joined", onPeerJoined); socket.on("group:peer-left", onPeerLeft); socket.on("group:peer-promoted", onPeerPromoted);
+    socket.on("group:chat-message", onChatMessage); socket.on("group:force-mute", onForceMute);
+    socket.on("group:force-unmute", onForceUnmute); socket.on("group:moved-to-waiting", onMovedToWaiting);
+    socket.on("group:admitted", onAdmitted); socket.on("group:removed", onRemoved);
+    socket.on("group:promoted", onPromoted); socket.on("group:peer-muted", onPeerMuted);
+    socket.on("group:peer-unmuted", onPeerUnmuted); socket.on("group:music-state", onMusicState);
+    socket.on("group:music-error", onMusicError); socket.on("group:waiting-list", onWaitingList);
 
     return () => {
-      socket.off("identified", onIdentified);
-      socket.off("group:joined", onJoined);
-      socket.off("group:peer-joined", onPeerJoined);
-      socket.off("group:peer-left", onPeerLeft);
-      socket.off("group:peer-promoted", onPeerPromoted);
-      socket.off("group:chat-message", onChatMessage);
-      socket.off("blocked", onBlocked);
-      socket.off("group:force-mute", onForceMute);
-      socket.off("group:force-unmute", onForceUnmute);
-      socket.off("group:moved-to-waiting", onMovedToWaiting);
-      socket.off("group:admitted", onAdmitted);
-      socket.off("group:removed", onRemoved);
-      socket.off("group:promoted", onPromoted);
-      socket.off("group:waiting-list", onWaitingList);
-      socket.off("group:peer-muted", onPeerMuted);
-      socket.off("group:peer-unmuted", onPeerUnmuted);
-      socket.off("group:music-state", onMusicState);
-      socket.off("group:music-error", onMusicError);
-      socket.off("connect", onSocketConnect);
-      socket.off("disconnect", onSocketDisconnect);
-      socket.off("connect_error", onSocketConnectError);
+      ["connect", "disconnect", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list"].forEach((event) => socket.off(event));
     };
-  }, [roomId, connectToExistingPeer, closeAll, localStream, navigate]);
-
-  // Applies mutedPeers to the actual received audio tracks, not just the UI —
-  // this is what makes a moderator mute stick even if the muted person's
-  // client doesn't cooperate: everyone else simply stops playing their audio.
-  useEffect(() => {
-    Object.entries(remoteStreams).forEach(([socketId, stream]) => {
-      const shouldBeMuted = mutedPeers.has(socketId);
-      stream.getAudioTracks().forEach((t) => (t.enabled = !shouldBeMuted));
-    });
-  }, [remoteStreams, mutedPeers]);
+  }, [closeAll, connectToExistingPeer, localStream, navigate, roomId]);
 
   useEffect(() => {
-    chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+    Object.entries(remoteStreams).forEach(([socketId, stream]) => stream.getAudioTracks().forEach((track) => { track.enabled = !mutedPeers.has(socketId); }));
+  }, [mutedPeers, remoteStreams]);
+  useEffect(() => { chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: "smooth" }); }, [messages]);
 
   function toggleMic() {
-    if (forceMuted) return; // host-imposed mute — can't self-override, see onForceMute
-    localStream?.getAudioTracks().forEach((t) => (t.enabled = !t.enabled));
-    setMicOn((v) => !v);
+    if (forceMuted) return;
+    localStream?.getAudioTracks().forEach((track) => { track.enabled = !track.enabled; });
+    setMicOn((current) => !current);
   }
-
   async function toggleCam() {
-    const existingVideoTracks = localStream?.getVideoTracks() || [];
-    if (existingVideoTracks.length === 0) {
+    const tracks = localStream?.getVideoTracks() || [];
+    if (!tracks.length) {
       try {
         const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        const track = videoStream.getVideoTracks()[0];
-        localStream.addTrack(track);
+        const track = videoStream.getVideoTracks()[0]; localStream.addTrack(track);
         if (phase === "joined") await addVideoTrackToAllPeers(track, localStream);
         setCamOn(true);
-      } catch {
-        alert("Camera access was denied or unavailable.");
-      }
+      } catch { alert("Camera access was denied or unavailable."); }
       return;
     }
-    const next = !camOn;
-    existingVideoTracks.forEach((t) => (t.enabled = next));
-    setCamOn(next);
+    const next = !camOn; tracks.forEach((track) => { track.enabled = next; }); setCamOn(next);
   }
-
-  function leave() {
-    navigate("/rooms");
-  }
+  function leave() { navigate("/rooms"); }
   function sendMessage() {
-    const text = draft.trim();
-    if (!text) return;
-    if (!socket.connected || !socketReady) {
-      showBanner("Still connecting to the room. Try again in a moment.");
-      return;
-    }
+    const text = draft.trim(); if (!text || !socketReady) return;
     const clientMessageId = crypto.randomUUID();
     socket.emit("group:chat-message", { roomId, text, clientMessageId }, (result) => {
-      if (!result?.ok) {
-        showBanner(result?.error || "Message could not be sent.");
-        return;
-      }
-      if (result.message) setMessages((prev) => prev.some((item) => item.clientMessageId === clientMessageId) ? prev : [...prev, result.message]);
-      setDraft("");
+      if (result?.ok) { setMessages((current) => current.some((item) => item.clientMessageId === clientMessageId) ? current : [...current, result.message]); setDraft(""); }
     });
   }
-  // --- Moderator actions ---
-  const mute = (targetId) => socket.emit("group:mod-mute", { roomId, targetId });
-  const unmute = (targetId) => socket.emit("group:mod-unmute", { roomId, targetId });
-  const moveToWaiting = (targetId) => socket.emit("group:mod-move-waiting", { roomId, targetId });
-  const remove = (targetId) => {
-    if (confirm("Remove this person from the room?")) socket.emit("group:mod-remove", { roomId, targetId });
-  };
-  const promote = (targetId) => socket.emit("group:mod-promote", { roomId, targetId });
-  const admit = (targetId) => socket.emit("group:mod-admit", { roomId, targetId });
-  const deny = (targetId) => socket.emit("group:mod-deny", { roomId, targetId });
+  const mod = (event, targetId) => socket.emit(event, { roomId, targetId });
 
-  if (phase === "blocked") {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-center px-6">
-        <div>
-          <h2 className="font-display text-2xl text-white mb-2">Can't join this room</h2>
-          <p className="text-mist max-w-sm">Mic access was denied, or this device is currently restricted.</p>
-          <button onClick={() => navigate("/rooms")} className="mt-6 px-5 py-2.5 rounded-lg bg-signal text-ink font-semibold">
-            Back to rooms
-          </button>
-        </div>
-      </div>
-    );
-  }
+  if (phase === "blocked") return <EmptyState title="Can't join this room" text="Mic access was denied, or this device is currently restricted." action="Back to rooms" onAction={leave} />;
+  if (phase === "waiting") return <EmptyState title="You're in the waiting room" text="The host moved you here. You'll rejoin automatically if they let you back in." action="Leave instead" onAction={leave} />;
+  if (phase === "connecting-media") return <EmptyState title="Preparing your room" text="Getting your mic ready…" />;
 
-  if (phase === "waiting") {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-center px-6">
-        <div>
-          <div className="w-14 h-14 rounded-full bg-panel2 mx-auto mb-4 animate-pulse" />
-          <h2 className="font-display text-2xl text-white mb-2">You're in the waiting room</h2>
-          <p className="text-mist max-w-sm">The host moved you here. You'll rejoin automatically if they let you back in.</p>
-          <button onClick={leave} className="mt-6 px-5 py-2.5 rounded-lg bg-panel2 border border-white/10 text-mist hover:text-white">
-            Leave instead
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === "connecting-media") {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-center px-6">
-        <div>
-          <div className="w-14 h-14 rounded-full bg-panel2 mx-auto mb-4 animate-pulse" />
-          <p className="text-mist font-mono text-sm">Getting your mic ready…</p>
-        </div>
-      </div>
-    );
-  }
-
-  const totalTiles = 1 + peers.length;
+  const totalTiles = peers.length + 1;
   const gridCols = totalTiles <= 2 ? "grid-cols-1 sm:grid-cols-2" : totalTiles <= 4 ? "grid-cols-2" : "grid-cols-2 md:grid-cols-3";
-
   return (
     <div className="min-h-screen flex flex-col px-4 md:px-8 py-4">
-      <header className="flex items-center justify-between mb-4">
-        <button onClick={leave} className="text-mist hover:text-white text-sm">← Rooms</button>
-        <div className="text-center">
-          <h1 className="font-display font-semibold text-white flex items-center gap-2 justify-center">
-            {room?.name || "Room"}
-            {isModerator && (
-              <span className="text-[10px] font-mono uppercase tracking-wide px-2 py-0.5 rounded-full bg-signal/15 text-signal2 border border-signal/30">
-                host
-              </span>
-            )}
-          </h1>
-          <p className="text-xs text-mist font-mono">{totalTiles} {totalTiles === 1 ? "person" : "people"} · live</p>
-        </div>
-        <span className="w-12" />
+      <header className="flex items-center justify-between mb-4 pb-4 border-b border-white/5">
+        <button onClick={leave} className="text-mist hover:text-white text-sm transition">← Rooms</button>
+        <div className="text-center"><h1 className="font-display font-semibold text-white flex items-center gap-2 justify-center">{room?.name || "Room"}{isModerator && <span className="text-[10px] font-mono uppercase tracking-wide px-2 py-0.5 rounded-full bg-signal/15 text-signal2 border border-signal/30">host</span>}</h1><p className="text-xs text-mist font-mono mt-1">{totalTiles} {totalTiles === 1 ? "person" : "people"} · live</p></div>
+        <span className={`flex items-center gap-2 text-xs font-mono ${socketReady ? "text-signal2" : "text-coral"}`}><span className={`w-2 h-2 rounded-full ${socketReady ? "bg-signal animate-pulse" : "bg-coral"}`} />{socketReady ? "live" : "reconnecting"}</span>
       </header>
-
-      {banner && (
-        <div className="mb-3 mx-auto px-4 py-2 rounded-lg bg-violet/15 border border-violet/30 text-violet text-sm font-mono">
-          {banner}
-        </div>
-      )}
-
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 min-h-0">
+      {banner && <div className="mb-3 mx-auto px-4 py-2 rounded-xl bg-violet/15 border border-violet/30 text-violet text-sm font-mono animate-enter">{banner}</div>}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 min-h-0">
         <div className="flex flex-col gap-4 min-h-0">
-          <MusicPlayer
-            music={music}
-            isModerator={isModerator}
-            onStop={() => socket.emit("group:music-stop", { roomId })}
-          />
-          <div className={`grid ${gridCols} gap-3 flex-1 content-start`}>
-            <VideoTile stream={localStream} muted mirrored label={`You (${displayName.current})`} />
-            {peers.map((p) => (
-              <div key={p.socketId} className="relative">
-                <VideoTile stream={remoteStreams[p.socketId]} label={`${p.displayName}${p.isModerator ? " · host" : ""}`} />
-                {mutedPeers.has(p.socketId) && (
-                  <span className="absolute top-2 left-2 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">
-                    🔇 muted
-                  </span>
-                )}
-                <div className="absolute top-2 right-2 flex gap-1">
-                  {isModerator && !p.isModerator && (
-                    <ModMenu
-                      isMuted={mutedPeers.has(p.socketId)}
-                      onMute={() => mute(p.socketId)}
-                      onUnmute={() => unmute(p.socketId)}
-                      onWaitingRoom={() => moveToWaiting(p.socketId)}
-                      onRemove={() => remove(p.socketId)}
-                      onPromote={() => promote(p.socketId)}
-                    />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="sticky bottom-0 z-20 -mx-1 flex items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5">
-            <button
-              onClick={toggleMic}
-              disabled={forceMuted}
-              title={forceMuted ? "Muted by the host" : micOn ? "Mute mic" : "Unmute mic"}
-              className={`w-12 h-12 rounded-full flex items-center justify-center border ${forceMuted
-                ? "bg-coral/10 border-coral/30 text-coral cursor-not-allowed opacity-70"
-                : micOn
-                  ? "bg-panel2 border-white/10 text-white"
-                  : "bg-coral/10 border-coral/30 text-coral"
-                }`}
-            >
-              {micOn && !forceMuted ? "🎙️" : "🔇"}
-            </button>
-            <button
-              onClick={toggleCam}
-              className={`w-12 h-12 rounded-full flex items-center justify-center border ${camOn ? "bg-panel2 border-white/10 text-white" : "bg-coral/10 border-coral/30 text-coral"
-                }`}
-              title={camOn ? "Turn camera off" : "Turn camera on"}
-            >
-              {camOn ? "📹" : "🚫"}
-            </button>
-            <button onClick={leave} className="px-6 py-3 rounded-full bg-coral text-ink font-display font-semibold text-sm hover:brightness-110">
-              Leave room
-            </button>
-          </div>
+          <MusicPlayer music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />
+          <div className={`grid ${gridCols} gap-3 flex-1 content-start animate-enter`}><VideoTile stream={localStream} muted mirrored label={`You (${displayName.current})`} />{peers.map((peer) => <div key={peer.socketId} className="relative"><VideoTile stream={remoteStreams[peer.socketId]} label={`${peer.displayName}${peer.isModerator ? " · host" : ""}`} />{mutedPeers.has(peer.socketId) && <span className="absolute top-2 left-2 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}{isModerator && !peer.isModerator && <ModMenu isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} />}</div>)}</div>
+          <div className="sticky bottom-0 z-20 flex items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/85 backdrop-blur-md border-t border-white/5"><IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton><IconButton onClick={toggleCam} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton><button onClick={leave} className="px-6 py-3 rounded-full bg-coral text-ink font-display font-semibold text-sm hover:brightness-110 active:scale-95 transition shadow-lg shadow-coral/10">Leave room</button></div>
         </div>
-
-        <div className="flex flex-col gap-4 min-h-[380px] lg:min-h-0">
-          {isModerator && waitingList.length > 0 && (
-            <div className="bg-panel rounded-2xl border border-violet/30 overflow-hidden">
-              <div className="px-4 py-3 border-b border-white/5 font-display text-sm text-violet">
-                Waiting room · {waitingList.length}
-              </div>
-              <div className="p-3 space-y-2">
-                {waitingList.map((w) => (
-                  <div key={w.socketId} className="flex items-center justify-between text-sm">
-                    <span className="text-white/90">{w.displayName}</span>
-                    <div className="flex gap-1.5">
-                      <button onClick={() => admit(w.socketId)} className="px-2 py-1 rounded-md bg-signal/15 text-signal2 text-xs">
-                        Admit
-                      </button>
-                      <button onClick={() => deny(w.socketId)} className="px-2 py-1 rounded-md bg-coral/15 text-coral text-xs">
-                        Deny
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex-1 flex flex-col bg-panel rounded-2xl border border-white/5 overflow-hidden min-h-0">
-            <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between gap-3">
-              <div>
-                <p className="font-display text-sm text-mist">Room chat</p>
-                <p className="text-[11px] text-mist/60 mt-0.5">Say hi, share a link, keep it respectful.</p>
-              </div>
-              {isModerator && (
-                <div className="flex gap-1.5 shrink-0">
-                  <button onClick={() => setDraft("/play ")} className="px-2 py-1 rounded-md bg-signal/10 text-signal2 text-[11px] hover:bg-signal/20" title="Add a song command">
-                    + song
-                  </button>
-                  <button onClick={() => socket.emit(music?.status === "paused" ? "group:music-resume" : "group:music-pause", { roomId })} className="px-2 py-1 rounded-md bg-panel2 text-mist text-[11px] hover:text-white" title="Pause or resume room music">
-                    {music?.status === "paused" ? "play" : "pause"}
-                  </button>
-                </div>
-              )}
-            </div>
-            <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-              {messages.map((m, i) => (
-                <div key={i} className="text-sm">
-                  <span className="text-signal2 font-medium">{m.displayName}: </span>
-                  <span className="text-white/90">{m.text}</span>
-                </div>
-              ))}
-            </div>
-            <div className="p-3 border-t border-white/5 flex gap-2">
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                placeholder="Say something…"
-                maxLength={2000}
-                className="flex-1 bg-panel2 rounded-lg px-3 py-2 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:outline-signal"
-              />
-              <button onClick={sendMessage} className="px-4 py-2 rounded-lg bg-signal text-ink text-sm font-semibold">
-                Send
-              </button>
-            </div>
-          </div>
-        </div>
+        <aside className="flex flex-col gap-4 min-h-[380px] lg:min-h-0">
+          {isModerator && waitingList.length > 0 && <div className="bg-panel/85 rounded-2xl border border-violet/30 overflow-hidden surface-lift"><div className="px-4 py-3 border-b border-white/5 font-display text-sm text-violet">Waiting room · {waitingList.length}</div><div className="p-3 space-y-2">{waitingList.map((person) => <div key={person.socketId} className="flex items-center justify-between text-sm"><span className="text-white/90">{person.displayName}</span><div className="flex gap-1.5"><button onClick={() => mod("group:mod-admit", person.socketId)} className="px-2 py-1 rounded-md bg-signal/15 text-signal2 text-xs">Admit</button><button onClick={() => mod("group:mod-deny", person.socketId)} className="px-2 py-1 rounded-md bg-coral/15 text-coral text-xs">Deny</button></div></div>)}</div></div>}
+          <div className="flex-1 flex flex-col bg-panel/85 rounded-2xl border border-white/10 overflow-hidden min-h-0 surface-lift"><div className="px-4 py-3 border-b border-white/5 flex items-center justify-between"><div><p className="font-display text-sm text-white">Room chat</p><p className="text-[11px] text-mist/60 mt-0.5">Say hi and keep it respectful.</p></div>{isModerator && <button onClick={() => setDraft("/play ")} className="px-2 py-1 rounded-md bg-signal/10 text-signal2 text-[11px] hover:bg-signal/20">+ song</button>}</div><div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">{messages.length === 0 && <p className="text-sm text-mist/60">The room is quiet. Say hello.</p>}{messages.map((message, index) => <div key={message.clientMessageId || index} className="text-sm"><span className="text-signal2 font-medium">{message.displayName}: </span><span className="text-white/90 break-words">{message.text}</span></div>)}</div><div className="p-3 border-t border-white/5 flex gap-2"><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === "Enter" && sendMessage()} placeholder="Say something…" maxLength={2000} className="flex-1 bg-panel2 rounded-lg px-3 py-2 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:outline-signal" /><button onClick={sendMessage} className="px-4 py-2 rounded-lg bg-signal text-ink text-sm font-semibold hover:brightness-110 transition">Send</button></div></div>
+        </aside>
       </div>
-
     </div>
   );
 }
 
-function ModMenu({ isMuted, onMute, onUnmute, onWaitingRoom, onRemove, onPromote }) {
+function IconButton({ active, disabled, onClick, label, children }) { return <button onClick={onClick} disabled={disabled} aria-label={label} title={label} className={`w-12 h-12 rounded-full flex items-center justify-center border active:scale-95 transition ${disabled ? "bg-coral/10 border-coral/30 text-coral opacity-70 cursor-not-allowed" : active ? "bg-panel2 border-white/10 text-white" : "bg-coral/10 border-coral/30 text-coral"}`}>{children}</button>; }
+
+function ModMenu({ isMuted, onMute, onUnmute, onWaiting, onRemove, onPromote }) {
   const [open, setOpen] = useState(false);
-  const items = [
-    isMuted ? ["Unmute", onUnmute] : ["Mute mic", onMute],
-    ["Waiting room", onWaitingRoom],
-    ["Make moderator", onPromote],
-    ["Remove", onRemove],
-  ];
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="text-[11px] px-2 py-1 rounded-md bg-black/50 text-signal2 hover:bg-signal/20 backdrop-blur"
-      >
-        Host ⋯
-      </button>
-      {open && (
-        <div className="absolute right-0 mt-1 w-40 bg-panel2 border border-white/10 rounded-lg overflow-hidden z-10 text-sm">
-          {items.map(([label, fn]) => (
-            <button
-              key={label}
-              onClick={() => {
-                fn();
-                setOpen(false);
-              }}
-              className="w-full text-left px-3 py-2 text-white/90 hover:bg-white/5"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  const items = isMuted ? [["Unmute", onUnmute], ["Waiting room", onWaiting], ["Make moderator", onPromote], ["Remove", onRemove]] : [["Mute mic", onMute], ["Waiting room", onWaiting], ["Make moderator", onPromote], ["Remove", onRemove]];
+  return <div className="absolute top-2 right-2 z-10"><button onClick={() => setOpen((current) => !current)} className="text-[11px] px-2 py-1 rounded-md bg-black/60 text-signal2 hover:bg-signal/20 backdrop-blur">Host ···</button>{open && <div className="absolute right-0 mt-1 w-40 bg-panel2 border border-white/10 rounded-lg overflow-hidden text-sm shadow-xl">{items.map(([label, action]) => <button key={label} onClick={() => { action(); setOpen(false); }} className="w-full text-left px-3 py-2 text-white/90 hover:bg-white/5">{label}</button>)}</div>}</div>;
 }
+
+function EmptyState({ title, text, action, onAction }) { return <div className="min-h-screen flex items-center justify-center text-center px-6"><div className="animate-enter"><div className="w-16 h-16 rounded-2xl bg-panel2 border border-white/10 mx-auto mb-5 animate-drift" /><h2 className="font-display text-2xl text-white mb-2">{title}</h2><p className="text-mist max-w-sm">{text}</p>{action && <button onClick={onAction} className="mt-6 px-5 py-2.5 rounded-lg bg-signal text-ink font-semibold hover:brightness-110 transition">{action}</button>}</div></div>; }

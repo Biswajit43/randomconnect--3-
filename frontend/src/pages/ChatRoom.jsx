@@ -6,6 +6,7 @@ import VideoTile from "../components/VideoTile.jsx";
 import Controls from "../components/Controls.jsx";
 import ChatPanel from "../components/ChatPanel.jsx";
 import PulseConnector from "../components/PulseConnector.jsx";
+import ReportModal from "../components/ReportModal.jsx";
 
 export default function ChatRoom() {
   const { state } = useLocation();
@@ -20,6 +21,7 @@ export default function ChatRoom() {
   const [partnerName, setPartnerName] = useState("Stranger");
   const [roomId, setRoomId] = useState(null);
   const [blockedReason, setBlockedReason] = useState(null);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const { remoteStream, connectionState, startCall, endCall, addVideoTrack } = useWebRTC({ localStream });
   const mediaRequested = useRef(false);
@@ -143,6 +145,13 @@ export default function ChatRoom() {
     socket.disconnect();
     navigate("/");
   }
+  function submitReport(report) {
+    if (!roomId) return;
+    socket.emit("report:user", { roomId, ...report }, () => {
+      setReportOpen(false);
+      stop();
+    });
+  }
   if (phase === "blocked") {
     return (
       <div className="min-h-screen flex items-center justify-center px-6 text-center">
@@ -165,7 +174,7 @@ export default function ChatRoom() {
 
   return (
     <div className="min-h-screen flex flex-col px-4 md:px-8 py-4">
-      <header className="flex items-center justify-between mb-4">
+      <header className="flex items-center justify-between mb-4 pb-4 border-b border-white/5">
         <span className="font-display font-bold text-white">
           random<span className="text-signal">connect</span>
         </span>
@@ -175,12 +184,12 @@ export default function ChatRoom() {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 min-h-0">
         <div className="flex flex-col gap-4 min-h-0">
           {phase === "matched" ? (
-            <div className="grid grid-cols-2 gap-4 flex-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 animate-enter">
               <VideoTile stream={remoteStream} label={partnerName} />
               <VideoTile stream={localStream} muted mirrored label={`You (${getDisplayName() || "Guest"})`} />
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center bg-panel/40 rounded-2xl border border-white/5">
+            <div className="flex-1 flex items-center justify-center bg-panel/40 rounded-2xl border border-white/5 surface-lift">
               <PulseConnector
                 label={
                   phase === "queued"
@@ -200,6 +209,7 @@ export default function ChatRoom() {
             onToggleCam={toggleCam}
             onSkip={skip}
             onStop={stop}
+            onReport={() => setReportOpen(true)}
           />
         </div>
 
@@ -207,6 +217,12 @@ export default function ChatRoom() {
           <ChatPanel roomId={roomId} partnerName={partnerName} />
         </div>
       </div>
+
+      <ReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        onSubmit={submitReport}
+      />
 
     </div>
   );

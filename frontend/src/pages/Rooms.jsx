@@ -78,7 +78,7 @@ export default function Rooms() {
 
   return (
     <div className="min-h-screen">
-      <header className="px-6 py-5 flex items-center justify-between gap-3">
+      <header className="px-5 md:px-8 py-5 flex items-center justify-between gap-3 border-b border-white/5 bg-ink/30 backdrop-blur-md">
         <span className="font-display font-bold text-lg tracking-tight text-white shrink-0">
           random<span className="text-signal">connect</span>
         </span>
@@ -88,9 +88,9 @@ export default function Rooms() {
         </span>
       </header>
 
-      <main className="px-4 md:px-8 pb-16 grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6">
+      <main className="px-4 md:px-8 py-6 pb-16 grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6 max-w-[1440px] mx-auto">
         {/* Left: 1-to-1 entry point */}
-        <aside className="bg-panel border border-white/5 rounded-2xl p-6 h-fit lg:sticky lg:top-6">
+        <aside className="bg-panel/85 border border-white/10 rounded-2xl p-6 h-fit lg:sticky lg:top-6 surface-lift animate-enter">
           <p className="font-mono text-xs tracking-widest text-signal2 uppercase mb-2">1-to-1</p>
           <h2 className="font-display text-xl font-bold text-white mb-1">Talk to one stranger</h2>
           <p className="text-sm text-mist mb-5">Private call · instant match</p>
@@ -119,7 +119,7 @@ export default function Rooms() {
 
           <button
             onClick={start1to1}
-            className="w-full py-3 rounded-xl bg-signal text-ink font-display font-semibold hover:brightness-110 active:scale-[0.98] transition"
+            className="w-full py-3 rounded-xl bg-signal text-ink font-display font-semibold hover:brightness-110 active:scale-[0.98] transition shadow-lg shadow-signal/15"
           >
             Start 1-to-1 call
           </button>

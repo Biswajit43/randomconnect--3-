@@ -2,7 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
 }
 
@@ -10,22 +12,211 @@ body {
   font-family: "Inter", sans-serif;
   background-color: #0e1220;
   background-image:
-    radial-gradient(circle at 20% 20%, rgba(76, 201, 240, 0.08), transparent 40%),
-    radial-gradient(circle at 80% 70%, rgba(157, 141, 241, 0.08), transparent 40%);
-  color: #E7EAF6;
+    linear-gradient(
+      rgba(255, 255, 255, 0.018) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.018) 1px,
+      transparent 1px
+    ),
+    radial-gradient(
+      circle at 12% 8%,
+      rgba(76, 201, 240, 0.13),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 88% 78%,
+      rgba(157, 141, 241, 0.11),
+      transparent 38%
+    );
+
+  background-size:
+    42px 42px,
+    42px 42px,
+    auto,
+    auto;
+
+  color: #e7eaf6;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.035;
+
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E");
+}
+
+#root {
+  position: relative;
+  z-index: 1;
 }
 
 ::selection {
-  background: #4CC9F0;
-  color: #0E1220;
+  background: #4cc9f0;
+  color: #0e1220;
 }
 
-/* visible keyboard focus everywhere */
+/* Visible keyboard focus everywhere */
 :focus-visible {
-  outline: 2px solid #4CC9F0;
+  outline: 2px solid #4cc9f0;
   outline-offset: 2px;
 }
 
+
+/* =========================================================
+   SPEAKING BORDER
+   ========================================================= */
+
+@keyframes speakingPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 calc(
+        2px + var(--voice-intensity) * 2px
+      ) rgba(76, 201, 240, 0.2),
+
+      0 0 calc(
+        18px + var(--voice-intensity) * 12px
+      ) rgba(76, 201, 240, 0.28);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 calc(
+        3px + var(--voice-intensity) * 4px
+      ) rgba(76, 201, 240, 0.3),
+
+      0 0 calc(
+        22px + var(--voice-intensity) * 22px
+      ) rgba(76, 201, 240, 0.5);
+  }
+}
+
+.animate-speaking {
+  animation: speakingPulse 700ms ease-in-out infinite;
+}
+
+
+/* =========================================================
+   VOICE WAVE
+   ========================================================= */
+
+.voice-wave {
+  min-width: 74px;
+
+  height: 32px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+
+  opacity: 0.45;
+
+  transition:
+    opacity 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.voice-wave span {
+  width: 2px;
+
+  height: 3px;
+
+  border-radius: 999px;
+  background: #4cc9f0;
+  transform-origin: center;
+
+  transform: scaleY(
+    calc(
+      1 +
+      var(--wave-height) *
+      var(--voice-intensity) *
+      5
+    )
+  );
+
+  transition:
+    transform 55ms linear,
+    opacity 80ms ease;
+}
+
+.voice-wave.is-active {
+  opacity: 1;
+
+  border-color: rgba(76, 201, 240, 0.45);
+  box-shadow:
+    0 0 calc(
+      6px + var(--voice-intensity) * 10px
+    )
+    rgba(76, 201, 240, 0.08);
+}
+
+.voice-wave.is-active span {
+  animation: none;
+}
+
+
+/* =========================================================
+   SURFACES
+   ========================================================= */
+
+.surface-lift {
+  box-shadow:
+    0 18px 60px rgba(0, 0, 0, 0.22),
+    inset 0 1px rgba(255, 255, 255, 0.035);
+}
+
+
+/* =========================================================
+   INTERACTIVE
+   ========================================================= */
+
+.interactive-lift {
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+.interactive-lift:hover {
+  transform: translateY(-3px);
+
+  box-shadow:
+    0 18px 36px rgba(0, 0, 0, 0.2),
+    0 0 24px rgba(76, 201, 240, 0.08);
+}
+
+
+/* =========================================================
+   ENTER ANIMATION
+   ========================================================= */
+
+.animate-enter {
+  animation:
+    fadeInUp
+    650ms
+    cubic-bezier(0.16, 1, 0.3, 1)
+    both;
+}
+
+
+/* =========================================================
+   REDUCED MOTION
+   ========================================================= */
+
 @media (prefers-reduced-motion: reduce) {
-  * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

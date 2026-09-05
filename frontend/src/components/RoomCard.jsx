@@ -6,7 +6,7 @@ export default function RoomCard({ room, onJoin }) {
   return (
     <button
       onClick={() => onJoin(room)}
-      className="w-full text-left bg-panel hover:bg-panel2 border border-white/5 hover:border-signal/30 rounded-2xl p-4 transition group"
+      className="w-full text-left bg-panel/80 hover:bg-panel2 border border-white/5 hover:border-signal/40 rounded-2xl p-4 interactive-lift group"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

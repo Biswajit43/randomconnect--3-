@@ -13,6 +13,7 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  stats: () => request("/stats"),
   listRooms: () => request("/rooms"),
   listMyRooms: (fingerprint) => request(`/rooms/mine?fingerprint=${encodeURIComponent(fingerprint)}`),
   getRoom: (id) => request(`/rooms/${id}`),
