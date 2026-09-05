@@ -78,9 +78,7 @@ export function registerSignaling(io) {
           ? socket.data.staffDisplayName || "Developer"
           : socket.data.role === "admin"
             ? socket.data.staffDisplayName || "Admin Manager"
-          : requestedName && ![ownerName, managerName].some((reservedName) => reservedName.toLowerCase() === requestedName.toLowerCase())
-            ? requestedName
-            : "Guest";
+            : requestedName || "Guest";
 
         const banned = await isBanned({ fingerprint: socket.data.fingerprint, ipHash });
         if (banned) {

@@ -30,6 +30,7 @@ export default function GroupRoom() {
   const [role, setRole] = useState("user");
   const localStreamRef = useRef(null);
   const mediaRequested = useRef(false);
+  const identifySent = useRef(false);
   const { remoteStreams, connectToExistingPeer, setRoomId, closeAll, addVideoTrackToAllPeers } = useGroupWebRTC({ localStream });
 
   useEffect(() => {
@@ -50,7 +51,6 @@ export default function GroupRoom() {
       localStreamRef.current = stream;
       setLocalStream(stream);
       socket.connect();
-      socket.emit("identify", { fingerprint: getFingerprint(), displayName: displayName.current, ageConfirmed: true });
     }).catch(() => setPhase("blocked"));
 
     return () => {
@@ -97,10 +97,21 @@ export default function GroupRoom() {
     function onMusicState(next) { setMusic((current) => next.status === "stopped" ? null : { ...current, ...next, receivedAt: Date.now() }); }
     function onMusicError({ message }) { showBanner(message); }
     function onWaitingList({ waiting }) { setWaitingList(waiting); }
-    function onConnect() { setSocketReady(true); }
+    function identify() {
+      if (identifySent.current) return;
+      identifySent.current = true;
+      socket.emit("identify", { fingerprint: getFingerprint(), displayName: displayName.current, ageConfirmed: true });
+    }
+    function onBlocked({ reason }) {
+      identifySent.current = false;
+      setPhase("blocked");
+      if (reason === "server_error") showBanner("The room service could not verify your session. Please try again.");
+    }
+    function onConnect() { setSocketReady(true); identify(); }
     function onDisconnect() { setSocketReady(false); }
 
     socket.on("connect", onConnect); socket.on("disconnect", onDisconnect);
+    socket.on("blocked", onBlocked);
     socket.on("identified", onIdentified); socket.on("group:joined", onJoined);
     socket.on("group:peer-joined", onPeerJoined); socket.on("group:peer-left", onPeerLeft); socket.on("group:peer-promoted", onPeerPromoted); socket.on("group:peer-demoted", onPeerDemoted);
     socket.on("group:chat-message", onChatMessage); socket.on("group:force-mute", onForceMute);
@@ -111,7 +122,7 @@ export default function GroupRoom() {
     socket.on("group:music-error", onMusicError); socket.on("group:waiting-list", onWaitingList);
 
     return () => {
-      ["connect", "disconnect", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list"].forEach((event) => socket.off(event));
+      ["connect", "disconnect", "blocked", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list"].forEach((event) => socket.off(event));
     };
   }, [closeAll, connectToExistingPeer, localStream, navigate, roomId]);
 
