@@ -92,7 +92,10 @@ export default function GroupRoom() {
     }
     function onPeerLeft({ socketId }) { setPeers((current) => current.filter((peer) => peer.socketId !== socketId)); }
     function onPeerPromoted({ socketId }) { setPeers((current) => current.map((peer) => peer.socketId === socketId ? { ...peer, isModerator: true } : peer)); }
-    function onPeerDemoted({ socketId }) { setPeers((current) => current.map((peer) => peer.socketId === socketId ? { ...peer, isModerator: false } : peer)); }
+    function onPeerDemoted({ socketId, displayName: demotedName }) {
+      setPeers((current) => current.map((peer) => peer.socketId === socketId ? { ...peer, isModerator: false } : peer));
+      if (demotedName) showBanner(`${demotedName} is no longer a host.`);
+    }
     function onChatMessage(message) {
       if (!message || typeof message !== "object") return;
       setMessages((current) => {
@@ -115,6 +118,7 @@ export default function GroupRoom() {
     function onPeerMuted({ socketId }) { setMutedPeers((current) => new Set(current).add(socketId)); }
     function onPeerUnmuted({ socketId }) { setMutedPeers((current) => { const next = new Set(current); next.delete(socketId); return next; }); }
     function onPromoted() { setIsModerator(true); showBanner("You are now a room host."); }
+    function onDemoted({ message }) { setIsModerator(false); showBanner(message || "Your host role was removed."); }
     function onMusicState(next) {
       if (!next || typeof next !== "object") return;
       if (next.status === "stopped") {
@@ -149,13 +153,13 @@ export default function GroupRoom() {
     socket.on("group:chat-message", onChatMessage); socket.on("group:force-mute", onForceMute);
     socket.on("group:force-unmute", onForceUnmute); socket.on("group:moved-to-waiting", onMovedToWaiting);
     socket.on("group:admitted", onAdmitted); socket.on("group:removed", onRemoved);
-    socket.on("group:promoted", onPromoted); socket.on("group:peer-muted", onPeerMuted);
+    socket.on("group:promoted", onPromoted); socket.on("group:demoted", onDemoted); socket.on("group:peer-muted", onPeerMuted);
     socket.on("group:peer-unmuted", onPeerUnmuted); socket.on("group:music-state", onMusicState);
     socket.on("group:music-error", onMusicError); socket.on("group:waiting-list", onWaitingList);
     if (socket.connected) identify();
 
     return () => {
-      ["connect", "disconnect", "blocked", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list"].forEach((event) => socket.off(event));
+      ["connect", "disconnect", "blocked", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:demoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list"].forEach((event) => socket.off(event));
     };
   }, [closeAll, connectToExistingPeer, localStream, navigate, roomId]);
 

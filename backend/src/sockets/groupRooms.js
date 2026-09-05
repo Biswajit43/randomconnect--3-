@@ -395,7 +395,11 @@ export function registerGroupRooms(io) {
         });
         target.data.isModeratorByRoom = target.data.isModeratorByRoom || {};
         target.data.isModeratorByRoom[roomId] = false;
-        io.to(roomId).emit("group:peer-demoted", { socketId: targetId });
+        target.emit("group:demoted", { message: "Your host role was removed." });
+        io.to(roomId).emit("group:peer-demoted", {
+          socketId: targetId,
+          displayName: target.data.groupMeta.displayName || "A participant",
+        });
       })
     );
 
