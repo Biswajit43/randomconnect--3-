@@ -1,8 +1,7 @@
 import { v4 as uuid } from "uuid";
 import { matchmaker } from "../services/matchmaker.js";
 import { isBanned, hashIp, fileReport, autoBanOnRepeatedReports } from "../services/moderation.js";
-import { isAdminCookieHeader } from "../services/adminAuth.js";
-import { deviceTokenFromCookieHeader, hashDeviceToken } from "../services/adminAuth.js";
+import { adminRoleFromCookieHeader, deviceTokenFromCookieHeader, hashDeviceToken } from "../services/adminAuth.js";
 import AdminDevice from "../models/AdminDevice.js";
 
 // roomId -> { members: [socketId, socketId], fingerprints: {socketId: fp} }
@@ -34,14 +33,14 @@ export function registerSignaling(io) {
     const ipHash = hashIp(ip);
     socket.data.ipHash = ipHash;
     const cookieHeader = socket.handshake.headers.cookie || "";
-    const registeredDevice = await AdminDevice.findById("primary").lean();
-    const deviceToken = deviceTokenFromCookieHeader(cookieHeader);
-    socket.data.isOwner = Boolean(
-      isAdminCookieHeader(cookieHeader) &&
-      registeredDevice &&
-      deviceToken &&
-      registeredDevice.deviceHash === hashDeviceToken(deviceToken)
+    const adminRole = adminRoleFromCookieHeader(cookieHeader);
+    const deviceToken = deviceTokenFromCookieHeader(cookieHeader, adminRole);
+    const registeredAdminDevice = await AdminDevice.findById(adminRole).lean();
+    const verifiedAdminDevice = Boolean(
+      adminRole && registeredAdminDevice && deviceToken &&
+      registeredAdminDevice.deviceHash === hashDeviceToken(deviceToken)
     );
+    socket.data.role = verifiedAdminDevice ? adminRole : "user";
 
     // A lightweight fingerprint the client generates (canvas/webgl hash etc.)
     // and sends on connect. Not spoof-proof, but raises the cost of evasion
@@ -56,10 +55,13 @@ export function registerSignaling(io) {
 
         socket.data.fingerprint = fingerprint || uuid();
         const ownerName = (process.env.ADMIN_DISPLAY_NAME || "Owner").trim().slice(0, 30);
+        const managerName = (process.env.ADMIN_MANAGER_DISPLAY_NAME || "Admin Manager").trim().slice(0, 30);
         const requestedName = (displayName || "").trim().slice(0, 30);
-        socket.data.displayName = socket.data.isOwner
+        socket.data.displayName = socket.data.role === "developer"
           ? ownerName
-          : requestedName && requestedName.toLowerCase() !== ownerName.toLowerCase()
+          : socket.data.role === "admin"
+            ? managerName
+          : requestedName && ![ownerName, managerName].some((reservedName) => reservedName.toLowerCase() === requestedName.toLowerCase())
             ? requestedName
             : "Guest";
 
@@ -70,7 +72,7 @@ export function registerSignaling(io) {
           return;
         }
 
-        socket.emit("identified", { ok: true, displayName: socket.data.displayName, isOwner: socket.data.isOwner });
+        socket.emit("identified", { ok: true, displayName: socket.data.displayName, role: socket.data.role });
       } catch (err) {
         // identify() is the entry point for both the 1-to-1 flow and group
         // rooms — if this silently fails, the client just hangs on

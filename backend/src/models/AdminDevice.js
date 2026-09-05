@@ -5,6 +5,7 @@ const adminDeviceSchema = new mongoose.Schema(
     _id: { type: String, default: "primary" },
     deviceHash: { type: String, required: true },
     claimedAt: { type: Date, default: Date.now },
+    lastSeenAt: { type: Date, default: Date.now },
   },
   { versionKey: false }
 );

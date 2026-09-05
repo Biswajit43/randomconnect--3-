@@ -5,6 +5,7 @@ const statuses = ["pending", "reviewed", "dismissed"];
 
 export default function Admin() {
   const [authenticated, setAuthenticated] = useState(false);
+  const [adminRole, setAdminRole] = useState(null);
   const [checking, setChecking] = useState(true);
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("pending");
@@ -15,9 +16,17 @@ export default function Admin() {
 
   useEffect(() => {
     api.adminSession()
-      .then(() => setAuthenticated(true))
+      .then((session) => { setAdminRole(session.role); setAuthenticated(true); })
       .catch(() => {})
       .finally(() => setChecking(false));
+
+    const heartbeat = window.setInterval(() => api.adminSession().catch(() => {}), 30000);
+    const onPageHide = () => api.adminLogoutOnExit();
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.clearInterval(heartbeat);
+      window.removeEventListener("pagehide", onPageHide);
+    };
   }, []);
 
   useEffect(() => {
@@ -42,8 +51,9 @@ export default function Admin() {
     setError("");
     setBusy(true);
     try {
-      await api.adminLogin(password);
+      const session = await api.adminLogin(password);
       setPassword("");
+      setAdminRole(session.role);
       setAuthenticated(true);
     } catch (requestError) {
       setError(requestError.message);
@@ -65,6 +75,7 @@ export default function Admin() {
   async function logout() {
     await api.adminLogout().catch(() => {});
     setAuthenticated(false);
+    setAdminRole(null);
     setReports([]);
     setRooms([]);
   }
@@ -110,7 +121,7 @@ export default function Admin() {
       <header className="mx-auto flex max-w-6xl items-center justify-between border-b border-white/10 pb-5">
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-signal">Private console</p>
-          <h1 className="mt-1 font-display text-2xl font-semibold text-white">Trust & safety</h1>
+          <h1 className="mt-1 font-display text-2xl font-semibold text-white">Trust & safety <span className="text-xs uppercase tracking-wider text-mist">{adminRole}</span></h1>
         </div>
         <button onClick={logout} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-mist hover:text-white">Sign out</button>
       </header>
@@ -128,7 +139,7 @@ export default function Admin() {
                   <p className="mt-1 text-xs text-mist">{room.activeCount} / {room.maxParticipants} active · creator fingerprint {room.createdByFingerprint}</p>
                   <p className="mt-1 text-xs text-mist/70">Created {new Date(room.createdAt).toLocaleString()}</p>
                 </div>
-                <button onClick={() => deleteRoom(room)} className="rounded-lg bg-coral/15 px-3 py-2 text-xs font-semibold text-coral hover:bg-coral/25">Delete room</button>
+                {adminRole === "developer" && <button onClick={() => deleteRoom(room)} className="rounded-lg bg-coral/15 px-3 py-2 text-xs font-semibold text-coral hover:bg-coral/25">Delete room</button>}
               </article>
             ))}
           </div>

@@ -15,12 +15,37 @@ export default function Rooms() {
   const [preference, setPreference] = useState("any");
   const [interests, setInterests] = useState("");
   const [name, setName] = useState(() => getDisplayName());
+  const [staffRole, setStaffRole] = useState(null);
 
   // Someone can land here directly (bookmark, back button) without having
   // gone through the name/age gate on Landing — send them back if so.
   useEffect(() => {
     if (!getDisplayName()) navigate("/");
   }, [navigate]);
+
+  useEffect(() => {
+    let active = true;
+    const refreshStaffLease = () => api.adminSession().then((session) => {
+      if (active) setStaffRole(session.role);
+    }).catch(() => {
+      if (active) setStaffRole(null);
+    });
+    refreshStaffLease();
+    const intervalId = window.setInterval(refreshStaffLease, 30000);
+    const onPageHide = () => api.adminLogoutOnExit();
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, []);
+
+  async function signOutStaff() {
+    await api.adminLogout().catch(() => {});
+    setStaffRole(null);
+    navigate("/");
+  }
 
   const refresh = useCallback(() => {
     Promise.all([api.listRooms(), api.listMyRooms(getFingerprint())])
@@ -83,6 +108,7 @@ export default function Rooms() {
           random<span className="text-signal">connect</span>
         </span>
         <NameBadge name={name} onChange={(n) => { setName(n); setDisplayName(n); }} />
+        {staffRole && <button onClick={signOutStaff} className="rounded-lg border border-coral/30 px-2.5 py-1.5 text-xs text-coral hover:bg-coral/10">Sign out staff</button>}
         <span className="flex items-center gap-2 text-sm text-signal2 font-mono shrink-0">
           <span className="w-2 h-2 rounded-full bg-signal animate-pulse" /> live
         </span>

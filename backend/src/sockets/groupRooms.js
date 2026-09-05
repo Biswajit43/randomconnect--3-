@@ -54,6 +54,29 @@ async function isModeratorOfRoom(roomId, fingerprint) {
   }
 }
 
+function roleOf(socket) {
+  return socket.data.role || "user";
+}
+
+async function canModerateRoom(socket, roomId) {
+  if (!roomId || !socket.data.groupRooms?.has(roomId)) return false;
+  const role = roleOf(socket);
+  if (role === "developer" || role === "admin") return true;
+  return isModeratorOfRoom(roomId, socket.data.fingerprint);
+}
+
+async function canActOnTarget(socket, roomId, target) {
+  if (!roomId || !socket.data.groupRooms?.has(roomId)) return false;
+  if (!target?.data?.groupMeta) return false;
+  if (!target.data.groupRooms?.has(roomId)) return false;
+  const actorRole = roleOf(socket);
+  const targetRole = target.data.groupMeta.role || "user";
+  if (targetRole === "developer") return false;
+  if (actorRole === "admin") return targetRole === "user";
+  if (actorRole === "developer") return true;
+  return targetRole === "user" && isModeratorOfRoom(roomId, socket.data.fingerprint);
+}
+
 async function canControlMusic(socket, roomId) {
   if (!roomId || !socket.data.groupRooms?.has(roomId)) return false;
   return isModeratorOfRoom(roomId, socket.data.fingerprint);
@@ -78,10 +101,10 @@ export function registerGroupRooms(io) {
 
         const meta = {
           fingerprint: socket.data.fingerprint,
-          displayName: socket.data.isOwner ? socket.data.displayName : (displayName || socket.data.displayName || "Guest"),
-          isOwner: Boolean(socket.data.isOwner),
+          displayName: socket.data.displayName || "Guest",
+          role: socket.data.role || "user",
         };
-        const isModerator = await isModeratorOfRoom(roomId, socket.data.fingerprint);
+        const isModerator = await canModerateRoom(socket, roomId);
 
         const existingPeerIds = roomState.join(roomId, socket.id, meta);
         socket.join(roomId);
@@ -97,13 +120,13 @@ export function registerGroupRooms(io) {
           return {
             socketId: id,
             displayName: p?.data?.groupMeta?.displayName || "Guest",
-            isOwner: Boolean(p?.data?.groupMeta?.isOwner),
+            role: p?.data?.groupMeta?.role || "user",
             isModerator: p?.data?.isModeratorByRoom?.[roomId] || false,
             isMuted: roomState.isMuted(roomId, peerFingerprint),
           };
         });
 
-        socket.emit("group:joined", { roomId, existingPeers, isModerator });
+        socket.emit("group:joined", { roomId, existingPeers, isModerator, role: meta.role });
 
         // Late joiners hear whatever's already playing, roughly in sync —
         // the player seeks to (now - startedAt) on the client side.
@@ -115,7 +138,7 @@ export function registerGroupRooms(io) {
         socket.to(roomId).emit("group:peer-joined", {
           socketId: socket.id,
           displayName: meta.displayName,
-          isOwner: meta.isOwner,
+          role: meta.role,
           isModerator,
         });
 
@@ -179,7 +202,7 @@ export function registerGroupRooms(io) {
         if (typeof ack === "function") ack({ ok: false, error: "You are not connected to this room." });
         return;
       }
-      if (!(await isModeratorOfRoom(roomId, socket.data.fingerprint))) {
+      if (!(await canModerateRoom(socket, roomId))) {
         socket.emit("group:music-error", { message: "Only the host can control room music." });
         if (typeof ack === "function") ack({ ok: false, error: "Only the host can control room music." });
         return;
@@ -192,13 +215,19 @@ export function registerGroupRooms(io) {
 
     // --- Mesh WebRTC signaling, targeted at a specific peer (not broadcast) ---
     socket.on("group:webrtc-offer", ({ roomId, targetId, sdp }) => {
-      io.to(targetId).emit("group:webrtc-offer", { roomId, fromId: socket.id, sdp });
+      const target = io.sockets.sockets.get(targetId);
+      if (!socket.data.groupRooms?.has(roomId) || !target?.data?.groupRooms?.has(roomId)) return;
+      target.emit("group:webrtc-offer", { roomId, fromId: socket.id, sdp });
     });
-    socket.on("group:webrtc-answer", ({ targetId, sdp }) => {
-      io.to(targetId).emit("group:webrtc-answer", { fromId: socket.id, sdp });
+    socket.on("group:webrtc-answer", ({ roomId, targetId, sdp }) => {
+      const target = io.sockets.sockets.get(targetId);
+      if (!socket.data.groupRooms?.has(roomId) || !target?.data?.groupRooms?.has(roomId)) return;
+      target.emit("group:webrtc-answer", { roomId, fromId: socket.id, sdp });
     });
-    socket.on("group:webrtc-ice-candidate", ({ targetId, candidate }) => {
-      io.to(targetId).emit("group:webrtc-ice-candidate", { fromId: socket.id, candidate });
+    socket.on("group:webrtc-ice-candidate", ({ roomId, targetId, candidate }) => {
+      const target = io.sockets.sockets.get(targetId);
+      if (!socket.data.groupRooms?.has(roomId) || !target?.data?.groupRooms?.has(roomId)) return;
+      target.emit("group:webrtc-ice-candidate", { roomId, fromId: socket.id, candidate });
     });
 
     // --- Room-wide text chat ---
@@ -209,8 +238,8 @@ export function registerGroupRooms(io) {
     socket.on(
       "group:chat-message",
       safeHandler("group:chat-message", async ({ roomId, text, clientMessageId }, ack) => {
-        if (typeof ack === "function" && (!roomId || !socket.data.groupRooms?.has(roomId))) {
-          ack({ ok: false, error: "You are not connected to this room." });
+        if (!roomId || !socket.data.groupRooms?.has(roomId)) {
+          if (typeof ack === "function") ack({ ok: false, error: "You are not connected to this room." });
           return;
         }
         if (!text || text.length > 2000) {
@@ -224,7 +253,7 @@ export function registerGroupRooms(io) {
 
         if (playMatch || pastedYouTubeUrl || isPauseOrStop) {
           console.log(`[groupRooms] music command received: ${text.trim()}`);
-          const isMod = await isModeratorOfRoom(roomId, socket.data.fingerprint);
+          const isMod = await canModerateRoom(socket, roomId);
           if (!isMod) {
             console.warn("[groupRooms] music command rejected: sender is not a moderator");
             socket.emit("group:music-error", { message: "Only the host can control room music." });
@@ -322,10 +351,8 @@ export function registerGroupRooms(io) {
     socket.on(
       "group:mod-promote",
       safeHandler("group:mod-promote", async ({ roomId, targetId }) => {
-        if (!(await isModeratorOfRoom(roomId, socket.data.fingerprint))) return;
-
         const target = io.sockets.sockets.get(targetId);
-        if (!target?.data?.fingerprint) return;
+        if (!(await canActOnTarget(socket, roomId, target))) return;
 
         await Room.findByIdAndUpdate(roomId, { $addToSet: { moderatorFingerprints: target.data.fingerprint } });
         target.data.isModeratorByRoom = target.data.isModeratorByRoom || {};
@@ -339,10 +366,8 @@ export function registerGroupRooms(io) {
     socket.on(
       "group:mod-mute",
       safeHandler("group:mod-mute", async ({ roomId, targetId }) => {
-        if (!(await isModeratorOfRoom(roomId, socket.data.fingerprint))) return;
-
         const target = io.sockets.sockets.get(targetId);
-        if (!target?.data?.fingerprint) return;
+        if (!(await canActOnTarget(socket, roomId, target))) return;
 
         roomState.mute(roomId, target.data.fingerprint);
         target.emit("group:force-mute", { roomId }); // ask their own client to disable its mic
@@ -353,10 +378,8 @@ export function registerGroupRooms(io) {
     socket.on(
       "group:mod-unmute",
       safeHandler("group:mod-unmute", async ({ roomId, targetId }) => {
-        if (!(await isModeratorOfRoom(roomId, socket.data.fingerprint))) return;
-
         const target = io.sockets.sockets.get(targetId);
-        if (!target?.data?.fingerprint) return;
+        if (!(await canActOnTarget(socket, roomId, target))) return;
 
         roomState.unmute(roomId, target.data.fingerprint);
         target.emit("group:force-unmute", { roomId });
@@ -367,10 +390,8 @@ export function registerGroupRooms(io) {
     socket.on(
       "group:mod-move-waiting",
       safeHandler("group:mod-move-waiting", async ({ roomId, targetId }) => {
-        if (!(await isModeratorOfRoom(roomId, socket.data.fingerprint))) return;
-
         const target = io.sockets.sockets.get(targetId);
-        if (!target?.data?.groupMeta) return;
+        if (!(await canActOnTarget(socket, roomId, target))) return;
 
         roomState.hold(roomId, targetId, target.data.groupMeta);
         target.leave(roomId);
@@ -383,7 +404,7 @@ export function registerGroupRooms(io) {
     socket.on(
       "group:mod-admit",
       safeHandler("group:mod-admit", async ({ roomId, targetId }) => {
-        if (!(await isModeratorOfRoom(roomId, socket.data.fingerprint))) return;
+        if (!(await canModerateRoom(socket, roomId))) return;
 
         roomState.admit(roomId, targetId);
         io.sockets.sockets.get(targetId)?.emit("group:admitted", {}); // client re-runs group:join
@@ -394,7 +415,7 @@ export function registerGroupRooms(io) {
     socket.on(
       "group:mod-deny",
       safeHandler("group:mod-deny", async ({ roomId, targetId }) => {
-        if (!(await isModeratorOfRoom(roomId, socket.data.fingerprint))) return;
+        if (!(await canModerateRoom(socket, roomId))) return;
 
         roomState.denyFromWaitingRoom(roomId, targetId);
         io.sockets.sockets.get(targetId)?.emit("group:removed", { reason: "The host didn't let you into this room." });
@@ -405,10 +426,8 @@ export function registerGroupRooms(io) {
     socket.on(
       "group:mod-remove",
       safeHandler("group:mod-remove", async ({ roomId, targetId }) => {
-        if (!(await isModeratorOfRoom(roomId, socket.data.fingerprint))) return;
-
         const target = io.sockets.sockets.get(targetId);
-        if (!target?.data?.fingerprint) return;
+        if (!(await canActOnTarget(socket, roomId, target))) return;
 
         roomState.kick(roomId, targetId, target.data.fingerprint);
         target.leave(roomId);

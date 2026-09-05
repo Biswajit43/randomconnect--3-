@@ -102,6 +102,28 @@ body::before {
   animation: speakingPulse 700ms ease-in-out infinite;
 }
 
+.role-developer {
+  border-color: rgba(250, 204, 21, 0.7) !important;
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.2), 0 0 28px rgba(250, 204, 21, 0.18);
+}
+
+.role-admin {
+  border-color: rgba(157, 141, 241, 0.55) !important;
+  box-shadow: 0 0 16px rgba(157, 141, 241, 0.12);
+}
+
+.role-badge-developer {
+  color: #17130a;
+  background: #facc15;
+  box-shadow: 0 0 14px rgba(250, 204, 21, 0.24);
+}
+
+.role-badge-admin {
+  color: #e8e1ff;
+  background: rgba(104, 88, 170, 0.8);
+  border: 1px solid rgba(190, 177, 255, 0.35);
+}
+
 
 /* =========================================================
    VOICE WAVE

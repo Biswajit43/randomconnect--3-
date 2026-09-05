@@ -4,22 +4,32 @@ export const ADMIN_COOKIE = "randomconnect_admin";
 export const ADMIN_SESSION_MS = 8 * 60 * 60 * 1000;
 export const ADMIN_DEVICE_COOKIE = "randomconnect_admin_device";
 
-export function signAdminSession(issuedAt) {
+export function adminDeviceCookieName(role) {
+  return `${ADMIN_DEVICE_COOKIE}_${role}`;
+}
+
+export function signAdminSession(issuedAt, role = "admin") {
   return crypto
     .createHmac("sha256", process.env.ADMIN_SESSION_SECRET || "")
-    .update(String(issuedAt))
+    .update(`${issuedAt}.${role}`)
     .digest("base64url");
 }
 
-export function isValidAdminToken(token) {
+export function adminSessionFromToken(token) {
   if (!token || !process.env.ADMIN_SESSION_SECRET) return false;
-  const [issuedAt, signature] = token.split(".");
+  const [issuedAt, role, signature] = token.split(".");
+  if (!["developer", "admin"].includes(role)) return false;
   const issued = Number(issuedAt);
   if (!Number.isSafeInteger(issued) || Date.now() - issued > ADMIN_SESSION_MS || Date.now() < issued) return false;
 
-  const expectedBuffer = Buffer.from(signAdminSession(issuedAt));
+  const expectedBuffer = Buffer.from(signAdminSession(issuedAt, role));
   const actualBuffer = Buffer.from(signature || "");
-  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+  if (actualBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(actualBuffer, expectedBuffer)) return false;
+  return { role };
+}
+
+export function isValidAdminToken(token) {
+  return Boolean(adminSessionFromToken(token));
 }
 
 export function adminTokenFromCookieHeader(cookieHeader = "") {
@@ -33,6 +43,11 @@ export function adminTokenFromCookieHeader(cookieHeader = "") {
   } catch {
     return null;
   }
+}
+
+export function adminRoleFromCookieHeader(cookieHeader = "") {
+  const token = adminTokenFromCookieHeader(cookieHeader);
+  return adminSessionFromToken(token)?.role || null;
 }
 
 export function isAdminCookieHeader(cookieHeader) {
@@ -53,11 +68,12 @@ export function hashDeviceToken(token) {
   return crypto.createHash("sha256").update(String(token || "")).digest("hex");
 }
 
-export function deviceTokenFromCookieHeader(cookieHeader = "") {
+export function deviceTokenFromCookieHeader(cookieHeader = "", role = "admin") {
+  const cookieName = adminDeviceCookieName(role);
   const cookie = cookieHeader
     .split(";")
     .map((part) => part.trim())
-    .find((part) => part.startsWith(`${ADMIN_DEVICE_COOKIE}=`));
+    .find((part) => part.startsWith(`${cookieName}=`));
   if (!cookie) return null;
   try {
     return decodeURIComponent(cookie.slice(ADMIN_DEVICE_COOKIE.length + 1));

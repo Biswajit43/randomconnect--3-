@@ -25,6 +25,7 @@ export default function Landing() {
   const [clearedNotice, setClearedNotice] = useState(false);
   const [taglineIndex, setTaglineIndex] = useState(0);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [staffAccessOpen, setStaffAccessOpen] = useState(false);
 
   const canEnter = name.trim().length > 0 && ageConfirmed && agreedRules;
   const trimmedName = name.trim();
@@ -80,7 +81,13 @@ export default function Landing() {
         <span className="font-display font-bold text-lg tracking-tight text-white">
           random<span className="text-signal">connect</span>
         </span>
-        <div className="flex items-center gap-2 text-xs font-mono text-mist">
+        <div className="flex items-center gap-3 text-xs font-mono text-mist">
+          <button
+            onClick={() => setStaffAccessOpen(true)}
+            className="text-signal2 hover:text-signal underline underline-offset-2"
+          >
+            Staff access
+          </button>
           <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)] animate-pulse" />
           private by default
         </div>
@@ -288,7 +295,83 @@ export default function Landing() {
 
       <footer className="relative z-10 hidden lg:block px-6 py-5 text-center text-xs text-mist/60 font-mono">
         You share only what you choose · leave anytime · nothing follows you home
+        <button
+          onClick={() => setStaffAccessOpen(true)}
+          className="ml-4 text-signal2 hover:text-signal underline underline-offset-2"
+        >
+          Staff access
+        </button>
       </footer>
+
+      {staffAccessOpen && <StaffAccessModal onClose={() => setStaffAccessOpen(false)} />}
+    </div>
+  );
+}
+
+function StaffAccessModal({ onClose }) {
+  const navigate = useNavigate();
+  const [role, setRole] = useState("developer");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function signIn(event) {
+    event.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      const session = await api.adminLogin(password);
+      localStorage.setItem("rc_name", session.role === "developer" ? "Sᴛʀɪᴠᴇʀ" : "Mayank");
+      navigate("/rooms");
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-5 backdrop-blur-sm">
+      <form onSubmit={signIn} className="w-full max-w-sm rounded-2xl border border-white/10 bg-panel p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-signal">Private access</p>
+            <h2 className="mt-1 font-display text-xl font-semibold text-white">Enter as staff</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close staff access" className="text-xl text-mist hover:text-white">×</button>
+        </div>
+        <p className="mt-2 text-sm text-mist">The server verifies your role and device before you enter.</p>
+
+        <div className="mt-5 grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-panel2 p-1">
+          {[
+            ["developer", "◈ Developer"],
+            ["admin", "Admin manager"],
+          ].map(([value, label]) => (
+            <button
+              type="button"
+              key={value}
+              onClick={() => setRole(value)}
+              className={`rounded-md px-2 py-2 text-xs ${role === value ? "bg-signal text-ink font-semibold" : "text-mist hover:text-white"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <input
+          autoFocus
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder={`${role === "developer" ? "Developer" : "Manager"} password`}
+          autoComplete="current-password"
+          className="mt-4 w-full rounded-lg border border-white/10 bg-ink/60 px-3 py-3 text-white outline-none focus-visible:outline-signal"
+        />
+        {error && <p className="mt-3 text-sm text-coral">{error}</p>}
+        <button disabled={busy || !password} className="mt-4 w-full rounded-lg bg-signal px-4 py-3 text-sm font-semibold text-ink disabled:opacity-40">
+          {busy ? "Verifying..." : `Continue as ${role === "developer" ? "Developer" : "Admin"}`}
+        </button>
+      </form>
     </div>
   );
 }

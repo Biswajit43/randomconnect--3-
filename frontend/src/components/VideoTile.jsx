@@ -5,6 +5,7 @@ export default function VideoTile({
   muted = false,
   label,
   mirrored = false,
+  role = "user",
 }) {
   const videoRef = useRef(null);
 
@@ -215,6 +216,7 @@ export default function VideoTile({
         transition-all
         duration-200
 
+        ${role === "developer" ? "role-developer" : role === "admin" ? "role-admin" : ""}
         ${
           isSpeaking
             ? "border-2 border-signal shadow-[0_0_0_2px_rgba(76,201,240,0.25),0_0_24px_rgba(76,201,240,0.4)]"
@@ -243,6 +245,12 @@ export default function VideoTile({
         <div className="w-full h-full flex items-center justify-center">
           <div className="w-14 h-14 rounded-full bg-panel2 animate-drift" />
         </div>
+      )}
+
+      {role !== "user" && (
+        <span className={`absolute top-3 left-3 rounded-md px-2 py-1 font-mono text-[10px] font-bold tracking-[0.14em] backdrop-blur ${role === "developer" ? "role-badge-developer" : "role-badge-admin"}`}>
+          {role === "developer" ? "◈ DEVELOPER" : "ADMIN"}
+        </span>
       )}
 
       {/* LABEL */}

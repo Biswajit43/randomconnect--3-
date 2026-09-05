@@ -24,6 +24,10 @@ export const api = {
     request(`/rooms/${id}?fingerprint=${encodeURIComponent(fingerprint)}`, { method: "DELETE" }),
   adminLogin: (password) => request("/admin/login", { method: "POST", body: JSON.stringify({ password }) }),
   adminLogout: () => request("/admin/logout", { method: "POST" }),
+  adminLogoutOnExit: () => {
+    const body = new Blob(["{}"], { type: "application/json" });
+    navigator.sendBeacon(`${SERVER_URL}/api/admin/logout`, body);
+  },
   adminSession: () => request("/admin/session"),
   adminReports: (status = "pending") => request(`/admin/reports?status=${encodeURIComponent(status)}`),
   updateAdminReport: (id, status) => request(`/admin/reports/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),

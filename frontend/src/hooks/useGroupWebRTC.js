@@ -22,7 +22,7 @@ export function useGroupWebRTC({ localStream }) {
 
       pc.onicecandidate = (e) => {
         if (e.candidate) {
-          socket.emit("group:webrtc-ice-candidate", { targetId: peerId, candidate: e.candidate });
+          socket.emit("group:webrtc-ice-candidate", { roomId: roomIdRef.current, targetId: peerId, candidate: e.candidate });
         }
       };
 
@@ -90,7 +90,7 @@ export function useGroupWebRTC({ localStream }) {
   }, []);
 
   useEffect(() => {
-    async function onOffer({ fromId, sdp }) {
+    async function onOffer({ roomId, fromId, sdp }) {
       // Reuse the existing connection if one's already open — this is what
       // makes renegotiation (e.g. adding a video track after the call has
       // started) work instead of silently replacing an established peer.
@@ -98,7 +98,7 @@ export function useGroupWebRTC({ localStream }) {
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      socket.emit("group:webrtc-answer", { targetId: fromId, sdp: answer });
+      socket.emit("group:webrtc-answer", { roomId, targetId: fromId, sdp: answer });
     }
 
     async function onAnswer({ fromId, sdp }) {

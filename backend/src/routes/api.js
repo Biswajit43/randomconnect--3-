@@ -9,6 +9,8 @@ import {
   ADMIN_COOKIE,
   ADMIN_DEVICE_COOKIE,
   ADMIN_SESSION_MS,
+  adminDeviceCookieName,
+  adminSessionFromToken,
   createDeviceToken,
   deviceTokenFromCookieHeader,
   hashDeviceToken,
@@ -18,17 +20,59 @@ import {
 } from "../services/adminAuth.js";
 
 const MAX_ROOMS_PER_USER = 2;
+const ADMIN_LEASE_MS = 2 * 60 * 1000;
 const router = Router();
 
 function hasValidAdminSession(req) {
   return isAdminCookieHeader(req.headers.cookie || "");
 }
 
+function getAdminRole(req) {
+  const cookie = (req.headers.cookie || "")
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${ADMIN_COOKIE}=`));
+  if (!cookie) return null;
+  try {
+    return adminSessionFromToken(decodeURIComponent(cookie.slice(ADMIN_COOKIE.length + 1)))?.role || null;
+  } catch {
+    return null;
+  }
+}
+
 async function isRegisteredAdminDevice(cookieHeader) {
-  const deviceToken = deviceTokenFromCookieHeader(cookieHeader);
+  const role = getAdminRoleFromCookieHeader(cookieHeader);
+  const deviceToken = deviceTokenFromCookieHeader(cookieHeader, role);
   if (!deviceToken) return false;
-  const registered = await AdminDevice.findById("primary").lean();
-  return Boolean(registered && registered.deviceHash === hashDeviceToken(deviceToken));
+  const registered = await AdminDevice.findById(role).lean();
+  return Boolean(
+    registered &&
+    registered.deviceHash === hashDeviceToken(deviceToken) &&
+    Date.now() - new Date(registered.lastSeenAt || registered.claimedAt).getTime() <= ADMIN_LEASE_MS
+  );
+}
+
+async function touchAdminDevice(cookieHeader) {
+  const role = getAdminRoleFromCookieHeader(cookieHeader);
+  const deviceToken = deviceTokenFromCookieHeader(cookieHeader, role);
+  if (!role || !deviceToken) return;
+  await AdminDevice.updateOne(
+    { _id: role, deviceHash: hashDeviceToken(deviceToken) },
+    { $set: { lastSeenAt: new Date() } }
+  );
+}
+
+function getAdminRoleFromCookieHeader(cookieHeader) {
+  const cookie = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${ADMIN_COOKIE}=`));
+  if (!cookie) return null;
+  try {
+    return adminSessionFromToken(decodeURIComponent(cookie.slice(ADMIN_COOKIE.length + 1)))?.role || null;
+  } catch {
+    return null;
+  }
 }
 
 async function requireAdmin(req, res, next) {
@@ -40,6 +84,12 @@ async function requireAdmin(req, res, next) {
     console.error("[api] admin device check failed:", err.message);
     return res.status(503).json({ error: "Admin authentication is temporarily unavailable" });
   }
+  await touchAdminDevice(req.headers.cookie || "");
+  next();
+}
+
+function requireDeveloper(req, res, next) {
+  if (getAdminRole(req) !== "developer") return res.status(403).json({ error: "Developer permission required" });
   next();
 }
 
@@ -56,46 +106,61 @@ router.get("/stats", (_req, res) => {
 
 router.post("/admin/login", asyncRoute(async (req, res) => {
   const { password } = req.body || {};
-  if (!process.env.ADMIN_PASSWORD || !process.env.ADMIN_SESSION_SECRET) {
+  const developerPassword = process.env.ADMIN_PASSWORD;
+  const managerPassword = process.env.ADMIN_MANAGER_PASSWORD;
+  if ((!developerPassword && !managerPassword) || !process.env.ADMIN_SESSION_SECRET) {
     return res.status(503).json({ error: "Admin access is not configured" });
   }
-  if (!passwordsMatch(password, process.env.ADMIN_PASSWORD)) {
+  const role = developerPassword && passwordsMatch(password, developerPassword)
+    ? "developer"
+    : managerPassword && passwordsMatch(password, managerPassword)
+      ? "admin"
+      : null;
+  if (!role) {
     return res.status(401).json({ error: "Incorrect admin password" });
   }
 
   const cookieHeader = req.headers.cookie || "";
-  let deviceToken = deviceTokenFromCookieHeader(cookieHeader);
-  const registeredDevice = await AdminDevice.findById("primary").lean();
-  if (registeredDevice && (!deviceToken || registeredDevice.deviceHash !== hashDeviceToken(deviceToken))) {
+  let deviceToken = deviceTokenFromCookieHeader(cookieHeader, role);
+  const registeredDevice = await AdminDevice.findById(role).lean();
+  const registeredIsActive = registeredDevice && Date.now() - new Date(registeredDevice.lastSeenAt || registeredDevice.claimedAt).getTime() <= ADMIN_LEASE_MS;
+  if (registeredIsActive && (!deviceToken || registeredDevice.deviceHash !== hashDeviceToken(deviceToken))) {
     return res.status(403).json({ error: "Admin access is locked to the registered device" });
   }
-  if (!registeredDevice) {
+  if (!registeredDevice || !registeredIsActive) {
     deviceToken = createDeviceToken();
-    await AdminDevice.create({ _id: "primary", deviceHash: hashDeviceToken(deviceToken) });
+    await AdminDevice.findOneAndUpdate(
+      { _id: role },
+      { deviceHash: hashDeviceToken(deviceToken), claimedAt: new Date(), lastSeenAt: new Date() },
+      { upsert: true, new: true }
+    );
+  } else {
+    await AdminDevice.updateOne({ _id: role }, { $set: { lastSeenAt: new Date() } });
   }
 
   const issuedAt = Date.now();
-  const token = `${issuedAt}.${signAdminSession(issuedAt)}`;
+  const token = `${issuedAt}.${role}.${signAdminSession(issuedAt, role)}`;
   const crossOrigin = process.env.NODE_ENV === "production";
   res.setHeader("Set-Cookie", [
     `${ADMIN_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${ADMIN_SESSION_MS / 1000}; SameSite=${crossOrigin ? "None; Secure" : "Lax"}`,
-    `${ADMIN_DEVICE_COOKIE}=${encodeURIComponent(deviceToken)}; HttpOnly; Path=/; Max-Age=31536000; SameSite=${crossOrigin ? "None; Secure" : "Lax"}`,
+    `${adminDeviceCookieName(role)}=${encodeURIComponent(deviceToken)}; HttpOnly; Path=/; Max-Age=31536000; SameSite=${crossOrigin ? "None; Secure" : "Lax"}`,
   ]);
-  res.json({ ok: true, expiresAt: issuedAt + ADMIN_SESSION_MS });
+  res.json({ ok: true, role, expiresAt: issuedAt + ADMIN_SESSION_MS });
 }));
 
 router.post("/admin/logout", asyncRoute(async (req, res) => {
   if (hasValidAdminSession(req) && await isRegisteredAdminDevice(req.headers.cookie || "")) {
-    await AdminDevice.deleteOne({ _id: "primary" });
+    await AdminDevice.deleteOne({ _id: getAdminRoleFromCookieHeader(req.headers.cookie || "") });
   }
+  const role = getAdminRoleFromCookieHeader(req.headers.cookie || "") || "admin";
   res.setHeader("Set-Cookie", [
     `${ADMIN_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`,
-    `${ADMIN_DEVICE_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`,
+    `${adminDeviceCookieName(role)}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`,
   ]);
   res.json({ ok: true });
 }));
 
-router.get("/admin/session", requireAdmin, (_req, res) => res.json({ authenticated: true }));
+router.get("/admin/session", requireAdmin, (req, res) => res.json({ authenticated: true, role: getAdminRole(req) }));
 
 // --- Group rooms -----------------------------------------------------------
 
@@ -240,6 +305,7 @@ router.get(
 router.delete(
   "/admin/rooms/:id",
   requireAdmin,
+  requireDeveloper,
   asyncRoute(async (req, res) => {
     const room = await Room.findByIdAndDelete(req.params.id).lean();
     if (!room) return res.status(404).json({ error: "Room not found" });
