@@ -43,8 +43,9 @@ function safeHandler(eventName, fn) {
 async function isModeratorOfRoom(roomId, fingerprint) {
   if (!fingerprint) return false;
   try {
-    const room = await Room.findById(roomId).select("createdByFingerprint moderatorFingerprints").lean();
+    const room = await Room.findById(roomId).select("createdByFingerprint moderatorFingerprints demotedModeratorFingerprints").lean();
     if (!room) return false;
+    if (room.demotedModeratorFingerprints.includes(fingerprint)) return false;
     return room.createdByFingerprint === fingerprint || room.moderatorFingerprints.includes(fingerprint);
   } catch (err) {
     // Malformed roomId or a DB hiccup shouldn't crash the caller — fail
@@ -367,7 +368,10 @@ export function registerGroupRooms(io) {
         const target = io.sockets.sockets.get(targetId);
         if (!(await canActOnTarget(socket, roomId, target))) return;
 
-        await Room.findByIdAndUpdate(roomId, { $addToSet: { moderatorFingerprints: target.data.fingerprint } });
+        await Room.findByIdAndUpdate(roomId, {
+          $addToSet: { moderatorFingerprints: target.data.fingerprint },
+          $pull: { demotedModeratorFingerprints: target.data.fingerprint },
+        });
         target.data.isModeratorByRoom = target.data.isModeratorByRoom || {};
         target.data.isModeratorByRoom[roomId] = true;
 
@@ -385,7 +389,10 @@ export function registerGroupRooms(io) {
         if (!target?.data?.groupMeta || target.data.groupMeta.role !== "user") return;
         if (!target.data.groupRooms?.has(roomId) || !socket.data.groupRooms?.has(roomId)) return;
 
-        await Room.findByIdAndUpdate(roomId, { $pull: { moderatorFingerprints: target.data.fingerprint } });
+        await Room.findByIdAndUpdate(roomId, {
+          $pull: { moderatorFingerprints: target.data.fingerprint },
+          $addToSet: { demotedModeratorFingerprints: target.data.fingerprint },
+        });
         target.data.isModeratorByRoom = target.data.isModeratorByRoom || {};
         target.data.isModeratorByRoom[roomId] = false;
         io.to(roomId).emit("group:peer-demoted", { socketId: targetId });

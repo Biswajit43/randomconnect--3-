@@ -13,6 +13,7 @@ const roomSchema = new mongoose.Schema(
 		maxParticipants: { type: Number, default: 8, min: 2, max: 12 },
 		createdByFingerprint: { type: String, required: true },
 		moderatorFingerprints: { type: [String], default: [] },
+		demotedModeratorFingerprints: { type: [String], default: [] },
 		createdAt: { type: Date, default: Date.now },
 		lastActiveAt: { type: Date, default: Date.now, index: true },
 	},
