@@ -178,7 +178,7 @@ export function registerGroupRooms(io) {
       };
       roomState.setMusic(roomId, pausedMusic);
       io.to(roomId).emit("group:music-state", pausedMusic);
-      if (typeof ack === "function") ack({ ok: true });
+      if (typeof ack === "function") ack({ ok: true, music: true });
     }));
 
     socket.on("group:music-resume", safeHandler("group:music-resume", async ({ roomId }, ack) => {
@@ -199,7 +199,7 @@ export function registerGroupRooms(io) {
       delete resumedMusic.pausedPosition;
       roomState.setMusic(roomId, resumedMusic);
       io.to(roomId).emit("group:music-state", resumedMusic);
-      if (typeof ack === "function") ack({ ok: true });
+      if (typeof ack === "function") ack({ ok: true, music: true });
     }));
 
     // Playback controls have their own event so stopping music can never
@@ -217,7 +217,7 @@ export function registerGroupRooms(io) {
       const now = Date.now();
       roomState.clearMusic(roomId);
       io.to(roomId).emit("group:music-state", { status: "stopped", serverNow: now });
-      if (typeof ack === "function") ack({ ok: true });
+      if (typeof ack === "function") ack({ ok: true, music: true });
     }));
 
     // --- Mesh WebRTC signaling, targeted at a specific peer (not broadcast) ---
@@ -297,11 +297,11 @@ export function registerGroupRooms(io) {
               ? { status: "stopped", serverNow: now }
               : roomState.getMusic(roomId);
             if (!nextState) {
-              if (typeof ack === "function") ack({ ok: true });
+              if (typeof ack === "function") ack({ ok: true, music: true });
               return;
             }
             io.to(roomId).emit("group:music-state", nextState);
-            if (typeof ack === "function") ack({ ok: true });
+            if (typeof ack === "function") ack({ ok: true, music: true });
             return;
           }
  
@@ -340,7 +340,7 @@ export function registerGroupRooms(io) {
             if (typeof ack === "function") ack({ ok: false, error: "Music search failed." });
             return;
           }
-          if (typeof ack === "function") ack({ ok: true });
+          if (typeof ack === "function") ack({ ok: true, music: true });
           return;
         }
 

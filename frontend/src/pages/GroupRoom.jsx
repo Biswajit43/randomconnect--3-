@@ -95,7 +95,17 @@ export default function GroupRoom() {
     function onPeerDemoted({ socketId }) { setPeers((current) => current.map((peer) => peer.socketId === socketId ? { ...peer, isModerator: false } : peer)); }
     function onChatMessage(message) {
       if (!message || typeof message !== "object") return;
-      setMessages((current) => current.some((item) => item?.clientMessageId === message.clientMessageId) ? current : [...current, message]);
+      setMessages((current) => {
+        const safeMessages = Array.isArray(current)
+          ? current.filter((item) => item && typeof item === "object")
+          : [];
+        const incomingId = message.clientMessageId;
+        if (!incomingId) return [...safeMessages, message];
+        const alreadyExists = safeMessages.some(
+          (item) => item && typeof item === "object" && item.clientMessageId === incomingId
+        );
+        return alreadyExists ? safeMessages : [...safeMessages, message];
+      });
     }
     function onForceMute() { localStream?.getAudioTracks().forEach((track) => { track.enabled = false; }); setMicOn(false); setForceMuted(true); showBanner("The host muted your mic."); }
     function onForceUnmute() { setForceMuted(false); showBanner("Your mic is available again."); }
@@ -187,10 +197,24 @@ export default function GroupRoom() {
   }
   function leave() { navigate("/rooms"); }
   function sendMessage() {
-    const text = draft.trim(); if (!text || !socketReady) return;
+    const text = draft.trim();
+    if (!text || !socketReady) return;
     const clientMessageId = crypto.randomUUID();
     socket.emit("group:chat-message", { roomId, text, clientMessageId }, (result) => {
-      if (result?.ok) { setMessages((current) => current.some((item) => item.clientMessageId === clientMessageId) ? current : [...current, result.message]); setDraft(""); }
+      if (!result?.ok) return;
+      if (result.message && typeof result.message === "object") {
+        setMessages((current) => {
+          const safeMessages = Array.isArray(current)
+            ? current.filter((item) => item && typeof item === "object")
+            : [];
+          const messageId = result.message.clientMessageId;
+          if (messageId && safeMessages.some(
+            (item) => item && typeof item === "object" && item.clientMessageId === messageId
+          )) return safeMessages;
+          return [...safeMessages, result.message];
+        });
+      }
+      setDraft("");
     });
   }
   const mod = (event, targetId) => socket.emit(event, { roomId, targetId });
