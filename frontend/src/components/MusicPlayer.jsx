@@ -84,70 +84,74 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
   }, [music?.status, music?.startedAt, music?.serverNow, music?.receivedAt]);
 
   useEffect(() => {
-    if (!isYouTube || !music?.videoId || !youtubeContainerRef.current) return;
+    if (!isYouTube || !music?.videoId) return;
     let cancelled = false;
+    let retryFrame = 0;
 
     loadYouTubeApi().then((YT) => {
       if (cancelled) return;
-      const startPlayback = () => {
-        const player = youtubePlayerRef.current;
-        if (!player) return;
-        player.seekTo(elapsedSeconds(), true);
-        if (music.status === "playing") {
-          try {
-            player.playVideo();
-          } catch {
-            setNeedsEnable(true);
+      const mountPlayer = () => {
+        if (cancelled) return;
+        if (!youtubeContainerRef.current) {
+          retryFrame = window.requestAnimationFrame(mountPlayer);
+          return;
+        }
+
+        const startPlayback = () => {
+          const player = youtubePlayerRef.current;
+          if (!player) return;
+          player.seekTo(elapsedSeconds(), true);
+          if (musicRef.current?.status === "playing") {
+            try {
+              player.playVideo();
+            } catch {
+              setNeedsEnable(true);
+            }
+          } else {
+            player.pauseVideo();
           }
+        };
+
+        if (!youtubePlayerRef.current) {
+          youtubePlayerRef.current = new YT.Player(youtubeContainerRef.current, {
+            videoId: music.videoId,
+            width: "100%",
+            height: "100%",
+            playerVars: {
+              autoplay: 0,
+              controls: 0,
+              disablekb: 1,
+              fs: 0,
+              iv_load_policy: 3,
+              modestbranding: 1,
+              playsinline: 1,
+              rel: 0,
+              start: Math.floor(elapsedSeconds()),
+            },
+            events: {
+              onReady: startPlayback,
+              onError: () => setNeedsEnable(true),
+              onAutoplayBlocked: () => setNeedsEnable(true),
+              onStateChange: (event) => {
+                if (musicRef.current?.status !== "playing") return;
+                const playing = event.data === YT.PlayerState.PLAYING;
+                if (event.data === YT.PlayerState.PAUSED) setLocalPaused(true);
+                else if (playing) setLocalPaused(false);
+              },
+            },
+          });
         } else {
-          player.pauseVideo();
+          youtubePlayerRef.current.loadVideoById(music.videoId);
+          startPlayback();
         }
       };
 
-      if (!youtubePlayerRef.current) {
-        youtubePlayerRef.current = new YT.Player(youtubeContainerRef.current, {
-          videoId: music.videoId,
-          width: "100%",
-          height: "100%",
-          playerVars: {
-            autoplay: 0,
-            controls: 0,
-            disablekb: 1,
-            fs: 0,
-            iv_load_policy: 3,
-            modestbranding: 1,
-            playsinline: 1,
-            rel: 0,
-            start: Math.floor(elapsedSeconds()),
-          },
-          events: {
-            onReady: startPlayback,
-            onError: () => setNeedsEnable(true),
-            onAutoplayBlocked: () => setNeedsEnable(true),
-            onStateChange: (event) => {
-              // A phone or browser can pause the iframe independently. A
-              // later Play gesture rejoins the shared timeline. Intentional
-              // room pause/stop is left alone.
-              if (musicRef.current?.status !== "playing") return;
-              const playing = event.data === YT.PlayerState.PLAYING;
-              if (event.data === YT.PlayerState.PAUSED) {
-                setLocalPaused(true);
-              } else if (playing) {
-                // Do not seek here. Seeking in response to PLAYING causes a
-                // seek/buffer/PLAYING loop in the YouTube iframe.
-                setLocalPaused(false);
-              }
-            },
-          },
-        });
-      } else {
-        youtubePlayerRef.current.loadVideoById(music.videoId);
-        startPlayback();
-      }
+      mountPlayer();
     });
 
     return () => {
       cancelled = true;
+      window.cancelAnimationFrame(retryFrame);
       youtubePlayerRef.current?.destroy?.();
       youtubePlayerRef.current = null;
     };
