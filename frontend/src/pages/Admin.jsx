@@ -21,11 +21,8 @@ export default function Admin() {
       .finally(() => setChecking(false));
 
     const heartbeat = window.setInterval(() => api.adminSession().catch(() => {}), 30000);
-    const onPageHide = () => api.adminLogoutOnExit();
-    window.addEventListener("pagehide", onPageHide);
     return () => {
       window.clearInterval(heartbeat);
-      window.removeEventListener("pagehide", onPageHide);
     };
   }, []);
 

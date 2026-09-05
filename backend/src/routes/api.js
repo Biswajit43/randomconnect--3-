@@ -7,7 +7,6 @@ import { roomState } from "../services/roomState.js";
 import { containsProfanity } from "../utils/profanityFilter.js";
 import {
   ADMIN_COOKIE,
-  ADMIN_DEVICE_COOKIE,
   ADMIN_SESSION_MS,
   adminDeviceCookieName,
   adminSessionFromToken,
@@ -15,8 +14,8 @@ import {
   deviceTokenFromCookieHeader,
   hashDeviceToken,
   isAdminCookieHeader,
-  passwordsMatch,
   signAdminSession,
+  staffAccountFromPassword,
 } from "../services/adminAuth.js";
 
 const MAX_ROOMS_PER_USER = 2;
@@ -41,10 +40,11 @@ function getAdminRole(req) {
 }
 
 async function isRegisteredAdminDevice(cookieHeader) {
-  const role = getAdminRoleFromCookieHeader(cookieHeader);
-  const deviceToken = deviceTokenFromCookieHeader(cookieHeader, role);
+  const session = getAdminSessionFromCookieHeader(cookieHeader);
+  const accountId = session?.accountId;
+  const deviceToken = deviceTokenFromCookieHeader(cookieHeader, accountId);
   if (!deviceToken) return false;
-  const registered = await AdminDevice.findById(role).lean();
+  const registered = await AdminDevice.findById(accountId).lean();
   return Boolean(
     registered &&
     registered.deviceHash === hashDeviceToken(deviceToken) &&
@@ -53,23 +53,28 @@ async function isRegisteredAdminDevice(cookieHeader) {
 }
 
 async function touchAdminDevice(cookieHeader) {
-  const role = getAdminRoleFromCookieHeader(cookieHeader);
-  const deviceToken = deviceTokenFromCookieHeader(cookieHeader, role);
-  if (!role || !deviceToken) return;
+  const session = getAdminSessionFromCookieHeader(cookieHeader);
+  const accountId = session?.accountId;
+  const deviceToken = deviceTokenFromCookieHeader(cookieHeader, accountId);
+  if (!accountId || !deviceToken) return;
   await AdminDevice.updateOne(
-    { _id: role, deviceHash: hashDeviceToken(deviceToken) },
+    { _id: accountId, deviceHash: hashDeviceToken(deviceToken) },
     { $set: { lastSeenAt: new Date() } }
   );
 }
 
 function getAdminRoleFromCookieHeader(cookieHeader) {
+  return getAdminSessionFromCookieHeader(cookieHeader)?.role || null;
+}
+
+function getAdminSessionFromCookieHeader(cookieHeader) {
   const cookie = cookieHeader
     .split(";")
     .map((part) => part.trim())
     .find((part) => part.startsWith(`${ADMIN_COOKIE}=`));
   if (!cookie) return null;
   try {
-    return adminSessionFromToken(decodeURIComponent(cookie.slice(ADMIN_COOKIE.length + 1)))?.role || null;
+    return adminSessionFromToken(decodeURIComponent(cookie.slice(ADMIN_COOKIE.length + 1))) || null;
   } catch {
     return null;
   }
@@ -106,23 +111,16 @@ router.get("/stats", (_req, res) => {
 
 router.post("/admin/login", asyncRoute(async (req, res) => {
   const { password } = req.body || {};
-  const developerPassword = process.env.ADMIN_PASSWORD;
-  const managerPassword = process.env.ADMIN_MANAGER_PASSWORD;
-  if ((!developerPassword && !managerPassword) || !process.env.ADMIN_SESSION_SECRET) {
+  const account = staffAccountFromPassword(password);
+  if (!process.env.ADMIN_SESSION_SECRET) {
     return res.status(503).json({ error: "Admin access is not configured" });
   }
-  const role = developerPassword && passwordsMatch(password, developerPassword)
-    ? "developer"
-    : managerPassword && passwordsMatch(password, managerPassword)
-      ? "admin"
-      : null;
-  if (!role) {
-    return res.status(401).json({ error: "Incorrect admin password" });
-  }
+  if (!account) return res.status(401).json({ error: "Incorrect staff password" });
+  const { role, id: accountId, displayName } = account;
 
   const cookieHeader = req.headers.cookie || "";
-  let deviceToken = deviceTokenFromCookieHeader(cookieHeader, role);
-  const registeredDevice = await AdminDevice.findById(role).lean();
+  let deviceToken = deviceTokenFromCookieHeader(cookieHeader, accountId);
+  const registeredDevice = await AdminDevice.findById(accountId).lean();
   const registeredIsActive = registeredDevice && Date.now() - new Date(registeredDevice.lastSeenAt || registeredDevice.claimedAt).getTime() <= ADMIN_LEASE_MS;
   if (registeredIsActive && (!deviceToken || registeredDevice.deviceHash !== hashDeviceToken(deviceToken))) {
     return res.status(403).json({ error: "Admin access is locked to the registered device" });
@@ -130,32 +128,32 @@ router.post("/admin/login", asyncRoute(async (req, res) => {
   if (!registeredDevice || !registeredIsActive) {
     deviceToken = createDeviceToken();
     await AdminDevice.findOneAndUpdate(
-      { _id: role },
+      { _id: accountId },
       { deviceHash: hashDeviceToken(deviceToken), claimedAt: new Date(), lastSeenAt: new Date() },
       { upsert: true, new: true }
     );
   } else {
-    await AdminDevice.updateOne({ _id: role }, { $set: { lastSeenAt: new Date() } });
+    await AdminDevice.updateOne({ _id: accountId }, { $set: { lastSeenAt: new Date() } });
   }
 
   const issuedAt = Date.now();
-  const token = `${issuedAt}.${role}.${signAdminSession(issuedAt, role)}`;
+  const token = `${issuedAt}.${role}.${accountId}.${signAdminSession(issuedAt, role, accountId)}`;
   const crossOrigin = process.env.NODE_ENV === "production";
   res.setHeader("Set-Cookie", [
     `${ADMIN_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${ADMIN_SESSION_MS / 1000}; SameSite=${crossOrigin ? "None; Secure" : "Lax"}`,
-    `${adminDeviceCookieName(role)}=${encodeURIComponent(deviceToken)}; HttpOnly; Path=/; Max-Age=31536000; SameSite=${crossOrigin ? "None; Secure" : "Lax"}`,
+    `${adminDeviceCookieName(accountId)}=${encodeURIComponent(deviceToken)}; HttpOnly; Path=/; Max-Age=31536000; SameSite=${crossOrigin ? "None; Secure" : "Lax"}`,
   ]);
-  res.json({ ok: true, role, expiresAt: issuedAt + ADMIN_SESSION_MS });
+  res.json({ ok: true, role, displayName, expiresAt: issuedAt + ADMIN_SESSION_MS });
 }));
 
 router.post("/admin/logout", asyncRoute(async (req, res) => {
   if (hasValidAdminSession(req) && await isRegisteredAdminDevice(req.headers.cookie || "")) {
-    await AdminDevice.deleteOne({ _id: getAdminRoleFromCookieHeader(req.headers.cookie || "") });
+    await AdminDevice.deleteOne({ _id: getAdminSessionFromCookieHeader(req.headers.cookie || "")?.accountId });
   }
-  const role = getAdminRoleFromCookieHeader(req.headers.cookie || "") || "admin";
+  const accountId = getAdminSessionFromCookieHeader(req.headers.cookie || "")?.accountId || "admin";
   res.setHeader("Set-Cookie", [
     `${ADMIN_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`,
-    `${adminDeviceCookieName(role)}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`,
+    `${adminDeviceCookieName(accountId)}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`,
   ]);
   res.json({ ok: true });
 }));

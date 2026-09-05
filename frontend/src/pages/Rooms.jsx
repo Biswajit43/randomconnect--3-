@@ -32,12 +32,9 @@ export default function Rooms() {
     });
     refreshStaffLease();
     const intervalId = window.setInterval(refreshStaffLease, 30000);
-    const onPageHide = () => api.adminLogoutOnExit();
-    window.addEventListener("pagehide", onPageHide);
     return () => {
       active = false;
       window.clearInterval(intervalId);
-      window.removeEventListener("pagehide", onPageHide);
     };
   }, []);
 
@@ -105,15 +102,17 @@ export default function Rooms() {
 
   return (
     <div className="min-h-screen">
-      <header className="px-5 md:px-8 py-5 flex items-center justify-between gap-3 border-b border-white/5 bg-ink/30 backdrop-blur-md">
+      <header className="px-4 sm:px-5 md:px-8 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/5 bg-ink/30 backdrop-blur-md">
         <span className="font-display font-bold text-lg tracking-tight text-white shrink-0">
           random<span className="text-signal">connect</span>
         </span>
+        <div className="flex items-center gap-2 ml-auto min-w-0 max-w-full">
         <NameBadge name={name} onChange={(n) => { setName(n); setDisplayName(n); }} />
-        {staffRole && <button onClick={signOutStaff} className="rounded-lg border border-coral/30 px-2.5 py-1.5 text-xs text-coral hover:bg-coral/10">Sign out staff</button>}
+        {staffRole && <button onClick={signOutStaff} className="shrink-0 rounded-lg border border-coral/30 px-2.5 py-2 text-xs text-coral hover:bg-coral/10" aria-label="Sign out staff" title="Sign out staff">Sign out</button>}
         <span className="flex items-center gap-2 text-sm text-signal2 font-mono shrink-0">
           <span className="w-2 h-2 rounded-full bg-signal animate-pulse" /> live
         </span>
+        </div>
       </header>
 
       <main className="px-4 md:px-8 py-6 pb-16 grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6 max-w-[1440px] mx-auto">

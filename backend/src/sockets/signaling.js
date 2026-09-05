@@ -1,7 +1,7 @@
 import { v4 as uuid } from "uuid";
 import { matchmaker } from "../services/matchmaker.js";
 import { isBanned, hashIp, fileReport, autoBanOnRepeatedReports } from "../services/moderation.js";
-import { adminRoleFromCookieHeader, deviceTokenFromCookieHeader, hashDeviceToken } from "../services/adminAuth.js";
+import { adminSessionFromToken, deviceTokenFromCookieHeader, hashDeviceToken, staffAccountFromSession } from "../services/adminAuth.js";
 import AdminDevice from "../models/AdminDevice.js";
 
 // roomId -> { members: [socketId, socketId], fingerprints: {socketId: fp} }
@@ -37,18 +37,24 @@ export function registerSignaling(io) {
     // device check as a promise so identify() cannot run before the role is
     // known when the client emits immediately after socket.connect().
     socket.data.identityReady = (async () => {
-      const adminRole = adminRoleFromCookieHeader(cookieHeader);
+      const adminCookie = cookieHeader.split(";").map((part) => part.trim()).find((part) => part.startsWith("randomconnect_admin="));
+      const session = adminCookie
+        ? adminSessionFromToken(decodeURIComponent(adminCookie.slice("randomconnect_admin=".length)))
+        : null;
+      const account = staffAccountFromSession(session);
+      const adminRole = account?.role || null;
       if (!adminRole) {
         socket.data.role = "user";
         return;
       }
-      const deviceToken = deviceTokenFromCookieHeader(cookieHeader, adminRole);
-      const registeredAdminDevice = await AdminDevice.findById(adminRole).lean();
+      const deviceToken = deviceTokenFromCookieHeader(cookieHeader, account.id);
+      const registeredAdminDevice = await AdminDevice.findById(account.id).lean();
       const verifiedAdminDevice = Boolean(
         adminRole && registeredAdminDevice && deviceToken &&
         registeredAdminDevice.deviceHash === hashDeviceToken(deviceToken)
       );
       socket.data.role = verifiedAdminDevice ? adminRole : "user";
+      socket.data.staffDisplayName = verifiedAdminDevice ? account.displayName : null;
     })().catch((err) => {
       console.error("[signaling] socket identity check failed:", err.message);
       socket.data.role = "user";
@@ -67,13 +73,11 @@ export function registerSignaling(io) {
         }
 
         socket.data.fingerprint = fingerprint || uuid();
-        const ownerName = (process.env.ADMIN_DISPLAY_NAME || "Owner").trim().slice(0, 30);
-        const managerName = (process.env.ADMIN_MANAGER_DISPLAY_NAME || "Admin Manager").trim().slice(0, 30);
         const requestedName = (displayName || "").trim().slice(0, 30);
         socket.data.displayName = socket.data.role === "developer"
-          ? ownerName
+          ? socket.data.staffDisplayName || "Developer"
           : socket.data.role === "admin"
-            ? managerName
+            ? socket.data.staffDisplayName || "Admin Manager"
           : requestedName && ![ownerName, managerName].some((reservedName) => reservedName.toLowerCase() === requestedName.toLowerCase())
             ? requestedName
             : "Guest";

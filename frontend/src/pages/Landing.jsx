@@ -310,7 +310,6 @@ export default function Landing() {
 
 function StaffAccessModal({ onClose }) {
   const navigate = useNavigate();
-  const [role, setRole] = useState("developer");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -321,7 +320,7 @@ function StaffAccessModal({ onClose }) {
     setBusy(true);
     try {
       const session = await api.adminLogin(password);
-      localStorage.setItem("rc_name", session.role === "developer" ? "Sᴛʀɪᴠᴇʀ" : "Mayank");
+      localStorage.setItem("rc_name", session.displayName);
       navigate("/rooms");
     } catch (requestError) {
       setError(requestError.message);
@@ -340,36 +339,20 @@ function StaffAccessModal({ onClose }) {
           </div>
           <button type="button" onClick={onClose} aria-label="Close staff access" className="text-xl text-mist hover:text-white">×</button>
         </div>
-        <p className="mt-2 text-sm text-mist">The server verifies your role and device before you enter.</p>
-
-        <div className="mt-5 grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-panel2 p-1">
-          {[
-            ["developer", "◈ Developer"],
-            ["admin", "Admin manager"],
-          ].map(([value, label]) => (
-            <button
-              type="button"
-              key={value}
-              onClick={() => setRole(value)}
-              className={`rounded-md px-2 py-2 text-xs ${role === value ? "bg-signal text-ink font-semibold" : "text-mist hover:text-white"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <p className="mt-2 text-sm text-mist">The server verifies your account, role, and registered device before you enter.</p>
 
         <input
           autoFocus
           type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          placeholder={`${role === "developer" ? "Developer" : "Manager"} password`}
+          placeholder="Staff password"
           autoComplete="current-password"
           className="mt-4 w-full rounded-lg border border-white/10 bg-ink/60 px-3 py-3 text-white outline-none focus-visible:outline-signal"
         />
         {error && <p className="mt-3 text-sm text-coral">{error}</p>}
         <button disabled={busy || !password} className="mt-4 w-full rounded-lg bg-signal px-4 py-3 text-sm font-semibold text-ink disabled:opacity-40">
-          {busy ? "Verifying..." : `Continue as ${role === "developer" ? "Developer" : "Admin"}`}
+          {busy ? "Verifying..." : "Continue securely"}
         </button>
       </form>
     </div>
