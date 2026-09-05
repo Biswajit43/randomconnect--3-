@@ -16,7 +16,7 @@ if (import.meta.env.PROD && !import.meta.env.VITE_SERVER_URL) {
 
 // Lazily connected so we don't open a socket until the user actually
 // consents (age gate) and lands in the queue.
-export const socket = io(SERVER_URL, { autoConnect: false });
+export const socket = io(SERVER_URL, { autoConnect: false, withCredentials: true });
 
 export { SERVER_URL };
 

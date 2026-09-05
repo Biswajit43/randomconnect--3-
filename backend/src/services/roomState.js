@@ -72,6 +72,10 @@ class RoomState {
     return this.rooms.get(roomId)?.participants.size || 0;
   }
 
+  removeRoom(roomId) {
+    this.rooms.delete(roomId);
+  }
+
   participants(roomId) {
     const room = this.rooms.get(roomId);
     return room ? [...room.participants.entries()].map(([socketId, meta]) => ({ socketId, ...meta })) : [];

@@ -9,6 +9,7 @@ export default function Admin() {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("pending");
   const [reports, setReports] = useState([]);
+  const [rooms, setRooms] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -27,6 +28,14 @@ export default function Admin() {
       .catch((requestError) => setError(requestError.message))
       .finally(() => setBusy(false));
   }, [authenticated, status]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    const refreshRooms = () => api.adminRooms().then(setRooms).catch((requestError) => setError(requestError.message));
+    refreshRooms();
+    const intervalId = window.setInterval(refreshRooms, 5000);
+    return () => window.clearInterval(intervalId);
+  }, [authenticated]);
 
   async function login(event) {
     event.preventDefault();
@@ -57,6 +66,17 @@ export default function Admin() {
     await api.adminLogout().catch(() => {});
     setAuthenticated(false);
     setReports([]);
+    setRooms([]);
+  }
+
+  async function deleteRoom(room) {
+    if (!window.confirm(`Delete room "${room.name}" for everyone?`)) return;
+    try {
+      await api.deleteAdminRoom(room._id);
+      setRooms((current) => current.filter((item) => item._id !== room._id));
+    } catch (requestError) {
+      setError(requestError.message);
+    }
   }
 
   if (checking) return <main className="min-h-screen grid place-items-center text-mist">Checking admin session...</main>;
@@ -96,6 +116,24 @@ export default function Admin() {
       </header>
 
       <section className="mx-auto mt-6 max-w-6xl">
+        <div className="mb-8">
+          <h2 className="font-display text-lg text-white">Live rooms</h2>
+          <p className="text-sm text-mist">Monitor activity and remove rooms that break the rules.</p>
+          <div className="mt-4 grid gap-3">
+            {rooms.length === 0 && <p className="rounded-xl border border-white/10 p-5 text-sm text-mist">No rooms found.</p>}
+            {rooms.map((room) => (
+              <article key={room._id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-panel/80 p-4">
+                <div>
+                  <p className="font-semibold text-white">{room.name}</p>
+                  <p className="mt-1 text-xs text-mist">{room.activeCount} / {room.maxParticipants} active · creator fingerprint {room.createdByFingerprint}</p>
+                  <p className="mt-1 text-xs text-mist/70">Created {new Date(room.createdAt).toLocaleString()}</p>
+                </div>
+                <button onClick={() => deleteRoom(room)} className="rounded-lg bg-coral/15 px-3 py-2 text-xs font-semibold text-coral hover:bg-coral/25">Delete room</button>
+              </article>
+            ))}
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-display text-lg text-white">Reports</h2>

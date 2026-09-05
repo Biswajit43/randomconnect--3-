@@ -1,57 +1,46 @@
 import { Router } from "express";
-import crypto from "crypto";
 import Report from "../models/Report.js";
 import Room from "../models/Room.js";
+import AdminDevice from "../models/AdminDevice.js";
 import { matchmaker } from "../services/matchmaker.js";
 import { roomState } from "../services/roomState.js";
 import { containsProfanity } from "../utils/profanityFilter.js";
+import {
+  ADMIN_COOKIE,
+  ADMIN_DEVICE_COOKIE,
+  ADMIN_SESSION_MS,
+  createDeviceToken,
+  deviceTokenFromCookieHeader,
+  hashDeviceToken,
+  isAdminCookieHeader,
+  passwordsMatch,
+  signAdminSession,
+} from "../services/adminAuth.js";
 
 const MAX_ROOMS_PER_USER = 2;
-const ADMIN_COOKIE = "randomconnect_admin";
-const ADMIN_SESSION_MS = 8 * 60 * 60 * 1000;
-
 const router = Router();
 
-function signAdminSession(issuedAt) {
-  return crypto
-    .createHmac("sha256", process.env.ADMIN_SESSION_SECRET || "")
-    .update(String(issuedAt))
-    .digest("base64url");
-}
-
 function hasValidAdminSession(req) {
-  const cookieHeader = req.headers.cookie || "";
-  const cookie = cookieHeader
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${ADMIN_COOKIE}=`));
-  if (!cookie) return false;
+  return isAdminCookieHeader(req.headers.cookie || "");
+}
 
-  let value;
+async function isRegisteredAdminDevice(cookieHeader) {
+  const deviceToken = deviceTokenFromCookieHeader(cookieHeader);
+  if (!deviceToken) return false;
+  const registered = await AdminDevice.findById("primary").lean();
+  return Boolean(registered && registered.deviceHash === hashDeviceToken(deviceToken));
+}
+
+async function requireAdmin(req, res, next) {
   try {
-    value = decodeURIComponent(cookie.slice(ADMIN_COOKIE.length + 1));
-  } catch {
-    return false;
+    if (!hasValidAdminSession(req) || !(await isRegisteredAdminDevice(req.headers.cookie || ""))) {
+      return res.status(401).json({ error: "Admin authentication required on the registered device" });
+    }
+  } catch (err) {
+    console.error("[api] admin device check failed:", err.message);
+    return res.status(503).json({ error: "Admin authentication is temporarily unavailable" });
   }
-  const [issuedAt, signature] = value.split(".");
-  const issued = Number(issuedAt);
-  if (!Number.isSafeInteger(issued) || Date.now() - issued > ADMIN_SESSION_MS || Date.now() < issued) return false;
-
-  const expected = signAdminSession(issuedAt);
-  const actualBuffer = Buffer.from(signature || "");
-  const expectedBuffer = Buffer.from(expected);
-  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
-}
-
-function requireAdmin(req, res, next) {
-  if (!hasValidAdminSession(req)) return res.status(401).json({ error: "Admin authentication required" });
   next();
-}
-
-function passwordsMatch(candidate, configured) {
-  const candidateBuffer = Buffer.from(String(candidate || ""));
-  const configuredBuffer = Buffer.from(configured);
-  return candidateBuffer.length === configuredBuffer.length && crypto.timingSafeEqual(candidateBuffer, configuredBuffer);
 }
 
 // Wraps an async route handler so a rejected promise (bad input, DB down,
@@ -65,7 +54,7 @@ router.get("/stats", (_req, res) => {
   res.json({ waiting: matchmaker.queueSize() });
 });
 
-router.post("/admin/login", (req, res) => {
+router.post("/admin/login", asyncRoute(async (req, res) => {
   const { password } = req.body || {};
   if (!process.env.ADMIN_PASSWORD || !process.env.ADMIN_SESSION_SECRET) {
     return res.status(503).json({ error: "Admin access is not configured" });
@@ -74,20 +63,37 @@ router.post("/admin/login", (req, res) => {
     return res.status(401).json({ error: "Incorrect admin password" });
   }
 
+  const cookieHeader = req.headers.cookie || "";
+  let deviceToken = deviceTokenFromCookieHeader(cookieHeader);
+  const registeredDevice = await AdminDevice.findById("primary").lean();
+  if (registeredDevice && (!deviceToken || registeredDevice.deviceHash !== hashDeviceToken(deviceToken))) {
+    return res.status(403).json({ error: "Admin access is locked to the registered device" });
+  }
+  if (!registeredDevice) {
+    deviceToken = createDeviceToken();
+    await AdminDevice.create({ _id: "primary", deviceHash: hashDeviceToken(deviceToken) });
+  }
+
   const issuedAt = Date.now();
   const token = `${issuedAt}.${signAdminSession(issuedAt)}`;
   const crossOrigin = process.env.NODE_ENV === "production";
-  res.setHeader(
-    "Set-Cookie",
-    `${ADMIN_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/api/admin; Max-Age=${ADMIN_SESSION_MS / 1000}; SameSite=${crossOrigin ? "None; Secure" : "Lax"}`
-  );
+  res.setHeader("Set-Cookie", [
+    `${ADMIN_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${ADMIN_SESSION_MS / 1000}; SameSite=${crossOrigin ? "None; Secure" : "Lax"}`,
+    `${ADMIN_DEVICE_COOKIE}=${encodeURIComponent(deviceToken)}; HttpOnly; Path=/; Max-Age=31536000; SameSite=${crossOrigin ? "None; Secure" : "Lax"}`,
+  ]);
   res.json({ ok: true, expiresAt: issuedAt + ADMIN_SESSION_MS });
-});
+}));
 
-router.post("/admin/logout", (_req, res) => {
-  res.setHeader("Set-Cookie", `${ADMIN_COOKIE}=; HttpOnly; Path=/api/admin; Max-Age=0; SameSite=Lax`);
+router.post("/admin/logout", asyncRoute(async (req, res) => {
+  if (hasValidAdminSession(req) && await isRegisteredAdminDevice(req.headers.cookie || "")) {
+    await AdminDevice.deleteOne({ _id: "primary" });
+  }
+  res.setHeader("Set-Cookie", [
+    `${ADMIN_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`,
+    `${ADMIN_DEVICE_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`,
+  ]);
   res.json({ ok: true });
-});
+}));
 
 router.get("/admin/session", requireAdmin, (_req, res) => res.json({ authenticated: true }));
 
@@ -107,8 +113,11 @@ router.post(
     if (!fingerprint) {
       return res.status(400).json({ error: "Missing fingerprint" });
     }
-    if (containsProfanity(name)) {
-      return res.status(400).json({ error: "This group name is not allowed. Please choose a different name." });
+    if (containsProfanity(name) || containsProfanity(topic || "")) {
+      return res.status(400).json({
+        error: "Warning: abusive words are not allowed in room names or topics. Please choose respectful words. Repeated abuse may lead to a ban.",
+        warning: true,
+      });
     }
 
     // Enforced here, not just in the UI — a direct API call can't bypass
@@ -212,6 +221,30 @@ router.delete(
 
     await Room.findByIdAndDelete(req.params.id);
     res.json({ ok: true });
+  })
+);
+
+router.get(
+  "/admin/rooms",
+  requireAdmin,
+  asyncRoute(async (_req, res) => {
+    const rooms = await Room.find().sort({ lastActiveAt: -1 }).limit(100).lean();
+    const liveCounts = roomState.liveCounts();
+    res.json(rooms.map((room) => ({
+      ...room,
+      activeCount: liveCounts[room._id.toString()] || 0,
+    })));
+  })
+);
+
+router.delete(
+  "/admin/rooms/:id",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    const room = await Room.findByIdAndDelete(req.params.id).lean();
+    if (!room) return res.status(404).json({ error: "Room not found" });
+    roomState.removeRoom(req.params.id);
+    res.json({ ok: true, warning: "Room deleted by an administrator." });
   })
 );
 

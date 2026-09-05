@@ -1,6 +1,9 @@
 import { v4 as uuid } from "uuid";
 import { matchmaker } from "../services/matchmaker.js";
 import { isBanned, hashIp, fileReport, autoBanOnRepeatedReports } from "../services/moderation.js";
+import { isAdminCookieHeader } from "../services/adminAuth.js";
+import { deviceTokenFromCookieHeader, hashDeviceToken } from "../services/adminAuth.js";
+import AdminDevice from "../models/AdminDevice.js";
 
 // roomId -> { members: [socketId, socketId], fingerprints: {socketId: fp} }
 const activeRooms = new Map();
@@ -30,6 +33,15 @@ export function registerSignaling(io) {
     const ip = socket.handshake.address;
     const ipHash = hashIp(ip);
     socket.data.ipHash = ipHash;
+    const cookieHeader = socket.handshake.headers.cookie || "";
+    const registeredDevice = await AdminDevice.findById("primary").lean();
+    const deviceToken = deviceTokenFromCookieHeader(cookieHeader);
+    socket.data.isOwner = Boolean(
+      isAdminCookieHeader(cookieHeader) &&
+      registeredDevice &&
+      deviceToken &&
+      registeredDevice.deviceHash === hashDeviceToken(deviceToken)
+    );
 
     // A lightweight fingerprint the client generates (canvas/webgl hash etc.)
     // and sends on connect. Not spoof-proof, but raises the cost of evasion
@@ -43,7 +55,13 @@ export function registerSignaling(io) {
         }
 
         socket.data.fingerprint = fingerprint || uuid();
-        socket.data.displayName = (displayName || "").trim().slice(0, 30) || "Guest";
+        const ownerName = (process.env.ADMIN_DISPLAY_NAME || "Owner").trim().slice(0, 30);
+        const requestedName = (displayName || "").trim().slice(0, 30);
+        socket.data.displayName = socket.data.isOwner
+          ? ownerName
+          : requestedName && requestedName.toLowerCase() !== ownerName.toLowerCase()
+            ? requestedName
+            : "Guest";
 
         const banned = await isBanned({ fingerprint: socket.data.fingerprint, ipHash });
         if (banned) {
@@ -52,7 +70,7 @@ export function registerSignaling(io) {
           return;
         }
 
-        socket.emit("identified", { ok: true });
+        socket.emit("identified", { ok: true, displayName: socket.data.displayName, isOwner: socket.data.isOwner });
       } catch (err) {
         // identify() is the entry point for both the 1-to-1 flow and group
         // rooms — if this silently fails, the client just hangs on

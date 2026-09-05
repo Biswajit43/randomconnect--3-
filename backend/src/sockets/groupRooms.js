@@ -76,7 +76,11 @@ export function registerGroupRooms(io) {
           return;
         }
 
-        const meta = { fingerprint: socket.data.fingerprint, displayName: displayName || "Guest" };
+        const meta = {
+          fingerprint: socket.data.fingerprint,
+          displayName: socket.data.isOwner ? socket.data.displayName : (displayName || socket.data.displayName || "Guest"),
+          isOwner: Boolean(socket.data.isOwner),
+        };
         const isModerator = await isModeratorOfRoom(roomId, socket.data.fingerprint);
 
         const existingPeerIds = roomState.join(roomId, socket.id, meta);
@@ -93,6 +97,7 @@ export function registerGroupRooms(io) {
           return {
             socketId: id,
             displayName: p?.data?.groupMeta?.displayName || "Guest",
+            isOwner: Boolean(p?.data?.groupMeta?.isOwner),
             isModerator: p?.data?.isModeratorByRoom?.[roomId] || false,
             isMuted: roomState.isMuted(roomId, peerFingerprint),
           };
@@ -110,6 +115,7 @@ export function registerGroupRooms(io) {
         socket.to(roomId).emit("group:peer-joined", {
           socketId: socket.id,
           displayName: meta.displayName,
+          isOwner: meta.isOwner,
           isModerator,
         });
 
