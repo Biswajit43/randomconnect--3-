@@ -321,6 +321,7 @@ function StaffAccessModal({ onClose }) {
     try {
       const session = await api.adminLogin(password);
       localStorage.setItem("rc_name", session.displayName);
+      localStorage.setItem("rc_staff_role", session.role);
       navigate("/rooms");
     } catch (requestError) {
       setError(requestError.message);

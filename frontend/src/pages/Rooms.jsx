@@ -15,7 +15,7 @@ export default function Rooms() {
   const [preference, setPreference] = useState("any");
   const [interests, setInterests] = useState("");
   const [name, setName] = useState(() => getDisplayName());
-  const [staffRole, setStaffRole] = useState(null);
+  const [staffRole, setStaffRole] = useState(() => localStorage.getItem("rc_staff_role"));
 
   // Someone can land here directly (bookmark, back button) without having
   // gone through the name/age gate on Landing — send them back if so.
@@ -26,9 +26,13 @@ export default function Rooms() {
   useEffect(() => {
     let active = true;
     const refreshStaffLease = () => api.adminSession().then((session) => {
-      if (active) setStaffRole(session.role);
+      if (active) {
+        setStaffRole(session.role);
+        localStorage.setItem("rc_staff_role", session.role);
+      }
     }).catch(() => {
-      if (active) setStaffRole(null);
+      // Keep the control visible during a transient Render/network failure.
+      // The server still enforces the session on the actual sign-out request.
     });
     refreshStaffLease();
     const intervalId = window.setInterval(refreshStaffLease, 30000);
@@ -41,6 +45,7 @@ export default function Rooms() {
   async function signOutStaff() {
     await api.adminLogout().catch(() => {});
     setStaffRole(null);
+    localStorage.removeItem("rc_staff_role");
     localStorage.removeItem("rc_name");
     setName("");
     navigate("/");
