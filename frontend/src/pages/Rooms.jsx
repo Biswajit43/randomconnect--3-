@@ -44,6 +44,8 @@ export default function Rooms() {
   async function signOutStaff() {
     await api.adminLogout().catch(() => {});
     setStaffRole(null);
+    localStorage.removeItem("rc_name");
+    setName("");
     navigate("/");
   }
 

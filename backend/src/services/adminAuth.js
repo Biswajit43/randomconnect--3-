@@ -76,7 +76,7 @@ export function deviceTokenFromCookieHeader(cookieHeader = "", role = "admin") {
     .find((part) => part.startsWith(`${cookieName}=`));
   if (!cookie) return null;
   try {
-    return decodeURIComponent(cookie.slice(ADMIN_DEVICE_COOKIE.length + 1));
+    return decodeURIComponent(cookie.slice(cookieName.length + 1));
   } catch {
     return null;
   }
