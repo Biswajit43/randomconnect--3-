@@ -3,6 +3,7 @@ import { SERVER_URL } from "./socket.js";
 async function request(path, options = {}) {
   const res = await fetch(`${SERVER_URL}/api${path}`, {
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     ...options,
   });
   if (!res.ok) {
@@ -21,4 +22,9 @@ export const api = {
   updateRoom: (id, payload) => request(`/rooms/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   deleteRoom: (id, fingerprint) =>
     request(`/rooms/${id}?fingerprint=${encodeURIComponent(fingerprint)}`, { method: "DELETE" }),
+  adminLogin: (password) => request("/admin/login", { method: "POST", body: JSON.stringify({ password }) }),
+  adminLogout: () => request("/admin/logout", { method: "POST" }),
+  adminSession: () => request("/admin/session"),
+  adminReports: (status = "pending") => request(`/admin/reports?status=${encodeURIComponent(status)}`),
+  updateAdminReport: (id, status) => request(`/admin/reports/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
 };

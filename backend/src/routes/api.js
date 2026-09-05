@@ -1,4 +1,5 @@
 import { Router } from "express";
+import crypto from "crypto";
 import Report from "../models/Report.js";
 import Room from "../models/Room.js";
 import { matchmaker } from "../services/matchmaker.js";
@@ -6,8 +7,52 @@ import { roomState } from "../services/roomState.js";
 import { containsProfanity } from "../utils/profanityFilter.js";
 
 const MAX_ROOMS_PER_USER = 2;
+const ADMIN_COOKIE = "randomconnect_admin";
+const ADMIN_SESSION_MS = 8 * 60 * 60 * 1000;
 
 const router = Router();
+
+function signAdminSession(issuedAt) {
+  return crypto
+    .createHmac("sha256", process.env.ADMIN_SESSION_SECRET || "")
+    .update(String(issuedAt))
+    .digest("base64url");
+}
+
+function hasValidAdminSession(req) {
+  const cookieHeader = req.headers.cookie || "";
+  const cookie = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${ADMIN_COOKIE}=`));
+  if (!cookie) return false;
+
+  let value;
+  try {
+    value = decodeURIComponent(cookie.slice(ADMIN_COOKIE.length + 1));
+  } catch {
+    return false;
+  }
+  const [issuedAt, signature] = value.split(".");
+  const issued = Number(issuedAt);
+  if (!Number.isSafeInteger(issued) || Date.now() - issued > ADMIN_SESSION_MS || Date.now() < issued) return false;
+
+  const expected = signAdminSession(issuedAt);
+  const actualBuffer = Buffer.from(signature || "");
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function requireAdmin(req, res, next) {
+  if (!hasValidAdminSession(req)) return res.status(401).json({ error: "Admin authentication required" });
+  next();
+}
+
+function passwordsMatch(candidate, configured) {
+  const candidateBuffer = Buffer.from(String(candidate || ""));
+  const configuredBuffer = Buffer.from(configured);
+  return candidateBuffer.length === configuredBuffer.length && crypto.timingSafeEqual(candidateBuffer, configuredBuffer);
+}
 
 // Wraps an async route handler so a rejected promise (bad input, DB down,
 // invalid ObjectId, etc.) turns into a proper JSON error response instead of
@@ -19,6 +64,32 @@ router.get("/health", (_req, res) => res.json({ ok: true }));
 router.get("/stats", (_req, res) => {
   res.json({ waiting: matchmaker.queueSize() });
 });
+
+router.post("/admin/login", (req, res) => {
+  const { password } = req.body || {};
+  if (!process.env.ADMIN_PASSWORD || !process.env.ADMIN_SESSION_SECRET) {
+    return res.status(503).json({ error: "Admin access is not configured" });
+  }
+  if (!passwordsMatch(password, process.env.ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: "Incorrect admin password" });
+  }
+
+  const issuedAt = Date.now();
+  const token = `${issuedAt}.${signAdminSession(issuedAt)}`;
+  const crossOrigin = process.env.NODE_ENV === "production";
+  res.setHeader(
+    "Set-Cookie",
+    `${ADMIN_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/api/admin; Max-Age=${ADMIN_SESSION_MS / 1000}; SameSite=${crossOrigin ? "None; Secure" : "Lax"}`
+  );
+  res.json({ ok: true, expiresAt: issuedAt + ADMIN_SESSION_MS });
+});
+
+router.post("/admin/logout", (_req, res) => {
+  res.setHeader("Set-Cookie", `${ADMIN_COOKIE}=; HttpOnly; Path=/api/admin; Max-Age=0; SameSite=Lax`);
+  res.json({ ok: true });
+});
+
+router.get("/admin/session", requireAdmin, (_req, res) => res.json({ authenticated: true }));
 
 // --- Group rooms -----------------------------------------------------------
 
@@ -144,10 +215,10 @@ router.delete(
   })
 );
 
-// Minimal moderator endpoint — put real auth (SSO/admin role check) in front
-// of this before it ever sees production traffic.
+// Admin report endpoints are protected by the server-side session above.
 router.get(
   "/admin/reports",
+  requireAdmin,
   asyncRoute(async (req, res) => {
     const status = req.query.status || "pending";
     const reports = await Report.find({ status }).sort({ severity: -1, createdAt: -1 }).limit(100);
@@ -157,11 +228,15 @@ router.get(
 
 router.patch(
   "/admin/reports/:id",
+  requireAdmin,
   asyncRoute(async (req, res) => {
     const { status } = req.body || {};
+    if (!["pending", "reviewed", "dismissed"].includes(status)) {
+      return res.status(400).json({ error: "Invalid report status" });
+    }
     const report = await Report.findByIdAndUpdate(
       req.params.id,
-      { status, reviewedAt: new Date() },
+      { status, reviewedAt: new Date(), reviewedBy: "admin" },
       { new: true }
     );
     if (!report) return res.status(404).json({ error: "Report not found" });

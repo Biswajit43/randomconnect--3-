@@ -28,6 +28,7 @@ process.on("uncaughtException", (err) => {
 
 const app = express();
 const server = http.createServer(app);
+app.set("trust proxy", 1);
 
 // CLIENT_URL supports a comma-separated list — Vercel gives you a stable
 // production domain (e.g. myapp.vercel.app) plus a fresh preview URL on
@@ -68,7 +69,7 @@ const corsOrigin = (origin, callback) => {
 };
 
 app.use(helmet());
-app.use(cors({ origin: corsOrigin }));
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
 app.use(
   rateLimit({
@@ -82,7 +83,7 @@ app.use(
 app.use("/api", apiRoutes);
 
 const io = new Server(server, {
-  cors: { origin: corsOrigin, methods: ["GET", "POST"] },
+  cors: { origin: corsOrigin, methods: ["GET", "POST"], credentials: true },
   // Cap payloads — signaling messages are small; this blocks abuse of the
   // socket as a generic data channel.
   maxHttpBufferSize: 1e5,
