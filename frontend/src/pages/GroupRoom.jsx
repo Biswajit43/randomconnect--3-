@@ -46,12 +46,18 @@ export default function GroupRoom() {
   useEffect(() => {
     if (mediaRequested.current) return;
     mediaRequested.current = true;
-    navigator.mediaDevices.getUserMedia({ video: false, audio: true }).then((stream) => {
+    const connectRoom = () => {
+      socket.connect();
+    };
+
+    // Room access must not depend on microphone permission. A user can join
+    // muted and enable the microphone later from the call controls.
+    connectRoom();
+    navigator.mediaDevices?.getUserMedia({ video: false, audio: true }).then((stream) => {
       stream.getAudioTracks().forEach((track) => { track.enabled = false; });
       localStreamRef.current = stream;
       setLocalStream(stream);
-      socket.connect();
-    }).catch(() => setPhase("blocked"));
+    }).catch(() => {});
 
     return () => {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -120,6 +126,7 @@ export default function GroupRoom() {
     socket.on("group:promoted", onPromoted); socket.on("group:peer-muted", onPeerMuted);
     socket.on("group:peer-unmuted", onPeerUnmuted); socket.on("group:music-state", onMusicState);
     socket.on("group:music-error", onMusicError); socket.on("group:waiting-list", onWaitingList);
+    if (socket.connected) identify();
 
     return () => {
       ["connect", "disconnect", "blocked", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list"].forEach((event) => socket.off(event));
@@ -131,8 +138,21 @@ export default function GroupRoom() {
   }, [mutedPeers, remoteStreams]);
   useEffect(() => { chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: "smooth" }); }, [messages]);
 
-  function toggleMic() {
+  async function toggleMic() {
     if (forceMuted) return;
+    if (!localStream) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+        stream.getAudioTracks().forEach((track) => { track.enabled = true; });
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+        setMicOn(true);
+      } catch {
+        setBanner("Microphone permission is unavailable.");
+        window.setTimeout(() => setBanner((current) => current === "Microphone permission is unavailable." ? null : current), 3800);
+      }
+      return;
+    }
     localStream?.getAudioTracks().forEach((track) => { track.enabled = !track.enabled; });
     setMicOn((current) => !current);
   }
@@ -161,7 +181,7 @@ export default function GroupRoom() {
 
   if (phase === "blocked") return <EmptyState title="Can't join this room" text="Mic access was denied, or this device is currently restricted." action="Back to rooms" onAction={leave} />;
   if (phase === "waiting") return <EmptyState title="You're in the waiting room" text="The host moved you here. You'll rejoin automatically if they let you back in." action="Leave instead" onAction={leave} />;
-  if (phase === "connecting-media") return <EmptyState title="Preparing your room" text="Getting your mic ready…" />;
+  if (phase === "connecting-media") return <EmptyState title="Joining your room" text="Connecting securely…" />;
 
   const totalTiles = peers.length + 1;
   const gridCols = totalTiles <= 2 ? "grid-cols-1 sm:grid-cols-2" : totalTiles <= 4 ? "grid-cols-2" : "grid-cols-2 md:grid-cols-3";

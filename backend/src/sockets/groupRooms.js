@@ -79,7 +79,7 @@ async function canActOnTarget(socket, roomId, target) {
 
 async function canControlMusic(socket, roomId) {
   if (!roomId || !socket.data.groupRooms?.has(roomId)) return false;
-  if (roleOf(socket) === "developer") return true;
+  if (roleOf(socket) === "developer" || roleOf(socket) === "admin") return true;
   return isModeratorOfRoom(roomId, socket.data.fingerprint);
 }
 
@@ -105,7 +105,13 @@ export function registerGroupRooms(io) {
           displayName: socket.data.displayName || "Guest",
           role: socket.data.role || "user",
         };
-        const isModerator = await canModerateRoom(socket, roomId);
+        // The socket is added to groupRooms just below this line, so the
+        // normal moderator check cannot be used during the first join.
+        // Resolve the initial host state directly from the verified role or
+        // the room creator/moderator record.
+        const isModerator = roleOf(socket) === "developer" || roleOf(socket) === "admin"
+          ? true
+          : await isModeratorOfRoom(roomId, socket.data.fingerprint);
 
         const existingPeerIds = roomState.join(roomId, socket.id, meta);
         socket.join(roomId);
@@ -203,7 +209,7 @@ export function registerGroupRooms(io) {
         if (typeof ack === "function") ack({ ok: false, error: "You are not connected to this room." });
         return;
       }
-      if (!(await canModerateRoom(socket, roomId))) {
+      if (!(await canControlMusic(socket, roomId))) {
         socket.emit("group:music-error", { message: "Only the host can control room music." });
         if (typeof ack === "function") ack({ ok: false, error: "Only the host can control room music." });
         return;
