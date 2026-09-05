@@ -79,8 +79,8 @@ export default function GroupRoom() {
     }
     function onPeerJoined(peer) {
       setPeers((current) => [...current, peer]);
-      if (peer.role === "developer") showBanner("◈ Developer joined");
-      else if (peer.role === "admin") showBanner(`ADMIN · ${peer.displayName} joined`);
+      if (peer.role === "developer") showBanner(`◈ DEVELOPER • ${peer.displayName} joined`);
+      else if (peer.role === "admin") showBanner(`ADMIN • ${peer.displayName} joined`);
     }
     function onPeerLeft({ socketId }) { setPeers((current) => current.filter((peer) => peer.socketId !== socketId)); }
     function onPeerPromoted({ socketId }) { setPeers((current) => current.map((peer) => peer.socketId === socketId ? { ...peer, isModerator: true } : peer)); }
@@ -160,7 +160,7 @@ export default function GroupRoom() {
         <div className="text-center"><h1 className="font-display font-semibold text-white flex items-center gap-2 justify-center">{room?.name || "Room"}{isModerator && <span className="text-[10px] font-mono uppercase tracking-wide px-2 py-0.5 rounded-full bg-signal/15 text-signal2 border border-signal/30">host</span>}</h1><p className="text-xs text-mist font-mono mt-1">{totalTiles} {totalTiles === 1 ? "person" : "people"} · live</p></div>
         <span className={`flex items-center gap-2 text-xs font-mono ${socketReady ? "text-signal2" : "text-coral"}`}><span className={`w-2 h-2 rounded-full ${socketReady ? "bg-signal animate-pulse" : "bg-coral"}`} />{socketReady ? "live" : "reconnecting"}</span>
       </header>
-      {banner && <div className="mb-3 mx-auto px-4 py-2 rounded-xl bg-violet/15 border border-violet/30 text-violet text-sm font-mono animate-enter">{banner}</div>}
+      {banner && <div className={`mb-3 mx-auto px-4 py-2 rounded-xl text-sm font-mono animate-enter ${banner.startsWith("◈") ? "role-entrance-developer" : "role-entrance-admin"}`}>{banner}</div>}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 min-h-0">
         <div className="flex flex-col gap-4 min-h-0">
           <MusicPlayer music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />

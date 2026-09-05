@@ -124,6 +124,20 @@ body::before {
   border: 1px solid rgba(190, 177, 255, 0.35);
 }
 
+.role-entrance-developer {
+  color: #17130a;
+  background: rgba(250, 204, 21, 0.92);
+  border: 1px solid rgba(255, 241, 158, 0.8);
+  box-shadow: 0 0 22px rgba(250, 204, 21, 0.28);
+}
+
+.role-entrance-admin {
+  color: #e8e1ff;
+  background: rgba(104, 88, 170, 0.42);
+  border: 1px solid rgba(190, 177, 255, 0.35);
+  box-shadow: 0 0 12px rgba(157, 141, 241, 0.12);
+}
+
 
 /* =========================================================
    VOICE WAVE

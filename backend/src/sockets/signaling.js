@@ -33,20 +33,33 @@ export function registerSignaling(io) {
     const ipHash = hashIp(ip);
     socket.data.ipHash = ipHash;
     const cookieHeader = socket.handshake.headers.cookie || "";
-    const adminRole = adminRoleFromCookieHeader(cookieHeader);
-    const deviceToken = deviceTokenFromCookieHeader(cookieHeader, adminRole);
-    const registeredAdminDevice = await AdminDevice.findById(adminRole).lean();
-    const verifiedAdminDevice = Boolean(
-      adminRole && registeredAdminDevice && deviceToken &&
-      registeredAdminDevice.deviceHash === hashDeviceToken(deviceToken)
-    );
-    socket.data.role = verifiedAdminDevice ? adminRole : "user";
+    // Socket.IO invokes connection listeners independently. Keep the async
+    // device check as a promise so identify() cannot run before the role is
+    // known when the client emits immediately after socket.connect().
+    socket.data.identityReady = (async () => {
+      const adminRole = adminRoleFromCookieHeader(cookieHeader);
+      if (!adminRole) {
+        socket.data.role = "user";
+        return;
+      }
+      const deviceToken = deviceTokenFromCookieHeader(cookieHeader, adminRole);
+      const registeredAdminDevice = await AdminDevice.findById(adminRole).lean();
+      const verifiedAdminDevice = Boolean(
+        adminRole && registeredAdminDevice && deviceToken &&
+        registeredAdminDevice.deviceHash === hashDeviceToken(deviceToken)
+      );
+      socket.data.role = verifiedAdminDevice ? adminRole : "user";
+    })().catch((err) => {
+      console.error("[signaling] socket identity check failed:", err.message);
+      socket.data.role = "user";
+    });
 
     // A lightweight fingerprint the client generates (canvas/webgl hash etc.)
     // and sends on connect. Not spoof-proof, but raises the cost of evasion
     // when combined with IP hashing.
     socket.on("identify", async ({ fingerprint, displayName, ageConfirmed }) => {
       try {
+        await socket.data.identityReady;
         if (!ageConfirmed) {
           socket.emit("blocked", { reason: "age_confirmation_required" });
           socket.disconnect(true);
