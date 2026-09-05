@@ -4,7 +4,7 @@ import { socket, getDisplayName, getFingerprint } from "../lib/socket.js";
 import { api } from "../lib/api.js";
 import { useGroupWebRTC } from "../hooks/useGroupWebRTC.js";
 import VideoTile from "../components/VideoTile.jsx";
-import MusicPlayer from "../components/MusicPlayer.jsx";
+import { MusicPlayerBoundary } from "../components/MusicPlayer.jsx";
 
 export default function GroupRoom() {
   const { roomId } = useParams();
@@ -107,7 +107,15 @@ export default function GroupRoom() {
     function onPromoted() { setIsModerator(true); showBanner("You are now a room host."); }
     function onMusicState(next) {
       if (!next || typeof next !== "object") return;
-      setMusic((current) => next.status === "stopped" ? null : { ...current, ...next, receivedAt: Date.now() });
+      if (next.status === "stopped") {
+        setMusic(null);
+        return;
+      }
+      const hasPlayableTrack = next.type === "youtube"
+        ? typeof next.videoId === "string" && next.videoId.length > 0
+        : typeof next.previewUrl === "string" && next.previewUrl.length > 0;
+      if (!hasPlayableTrack) return;
+      setMusic((current) => ({ ...current, ...next, receivedAt: Date.now() }));
     }
     function onMusicError({ message }) { showBanner(message); }
     function onWaitingList({ waiting }) { setWaitingList(Array.isArray(waiting) ? waiting : []); }
@@ -206,7 +214,7 @@ export default function GroupRoom() {
       {banner && <div className={`mb-3 mx-auto px-4 py-2 rounded-xl text-sm font-mono animate-enter ${banner.startsWith("◈") ? "role-entrance-developer" : "role-entrance-admin"}`}>{banner}</div>}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 min-h-0">
         <div className="flex flex-col gap-4 min-h-0">
-          <MusicPlayer music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />
+          <MusicPlayerBoundary music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />
           <div className={`grid ${gridCols} gap-3 flex-1 content-start animate-enter`}><VideoTile stream={localStream} muted mirrored label={displayName.current} role={role} />{visiblePeers.map((peer) => <div key={peer.socketId} className="relative"><VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName || "Guest"} role={peer.role || "user"} />{mutedPeers.has(peer.socketId) && <span className="absolute top-2 left-2 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}{isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator || (role === "admin" && peer.role === "user")) && <ModMenu isDeveloper={role === "developer"} isAdmin={role === "admin"} isModerator={peer.isModerator} targetRole={peer.role || "user"} isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} onDemote={() => mod("group:mod-demote", peer.socketId)} />}</div>)}</div>
           <div className="sticky bottom-0 z-20 flex items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/85 backdrop-blur-md border-t border-white/5"><IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton><IconButton onClick={toggleCam} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton><button onClick={leave} className="px-6 py-3 rounded-full bg-coral text-ink font-display font-semibold text-sm hover:brightness-110 active:scale-95 transition shadow-lg shadow-coral/10">Leave room</button></div>
         </div>

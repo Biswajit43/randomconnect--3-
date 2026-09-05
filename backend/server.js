@@ -10,6 +10,7 @@ import { connectDB } from "./src/config/db.js";
 import apiRoutes from "./src/routes/api.js";
 import { registerSignaling } from "./src/sockets/signaling.js";
 import { registerGroupRooms } from "./src/sockets/groupRooms.js";
+import { trackSocket } from "./src/services/presence.js";
 
 dotenv.config();
 
@@ -89,6 +90,7 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e5,
 });
 
+io.on("connection", trackSocket);
 registerSignaling(io);
 registerGroupRooms(io);
 

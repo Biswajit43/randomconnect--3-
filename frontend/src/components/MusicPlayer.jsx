@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Component, useEffect, useRef, useState } from "react";
 import { loadYouTubeApi } from "../lib/youtubeApi.js";
 
 export default function MusicPlayer({ music, isModerator, onStop }) {
@@ -200,9 +200,9 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
         )}
         <span className="text-lg shrink-0">🎵</span>
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-white truncate">{music.title} — {music.artist}</p>
+          <p className="text-sm text-white truncate">{music.title || "Room music"} — {music.artist || "Unknown artist"}</p>
           <p className="text-xs text-mist">
-            requested by {music.requestedBy}
+            requested by {music.requestedBy || "Host"}
             {!isYouTube && " · 30s preview"}
             {isYouTube && " · YouTube"}
             {music.status === "paused" && " · paused"}
@@ -237,6 +237,27 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
       {!stopped && isYouTube && <YouTubeMount containerRef={youtubeContainerRef} />}
     </div>
   );
+}
+
+export class MusicPlayerBoundary extends Component {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidUpdate(previousProps) {
+    if (this.state.failed && previousProps.music?.videoId !== this.props.music?.videoId) {
+      this.setState({ failed: false });
+    }
+  }
+
+  render() {
+    if (this.state.failed) {
+      return <div className="bg-panel border border-coral/25 rounded-xl px-3 py-2.5 text-xs text-mist">Music is unavailable on this device. The room is still connected.</div>;
+    }
+    return <MusicPlayer {...this.props} />;
+  }
 }
 
 function YouTubeMount({ containerRef }) {

@@ -32,5 +32,6 @@ export const api = {
   adminReports: (status = "pending") => request(`/admin/reports?status=${encodeURIComponent(status)}`),
   updateAdminReport: (id, status) => request(`/admin/reports/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
   adminRooms: () => request("/admin/rooms"),
+  adminUsage: () => request("/admin/usage"),
   deleteAdminRoom: (id) => request(`/admin/rooms/${id}`, { method: "DELETE" }),
 };

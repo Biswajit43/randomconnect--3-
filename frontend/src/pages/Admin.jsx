@@ -11,6 +11,7 @@ export default function Admin() {
   const [status, setStatus] = useState("pending");
   const [reports, setReports] = useState([]);
   const [rooms, setRooms] = useState([]);
+  const [usage, setUsage] = useState({ connectedUsers: 0, activeUsers: 0, activeRooms: 0, waitingUsers: 0 });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -37,7 +38,10 @@ export default function Admin() {
 
   useEffect(() => {
     if (!authenticated) return;
-    const refreshRooms = () => api.adminRooms().then(setRooms).catch((requestError) => setError(requestError.message));
+    const refreshRooms = () => {
+      api.adminRooms().then(setRooms).catch((requestError) => setError(requestError.message));
+      api.adminUsage().then(setUsage).catch((requestError) => setError(requestError.message));
+    };
     refreshRooms();
     const intervalId = window.setInterval(refreshRooms, 5000);
     return () => window.clearInterval(intervalId);
@@ -75,6 +79,7 @@ export default function Admin() {
     setAdminRole(null);
     setReports([]);
     setRooms([]);
+    setUsage({ connectedUsers: 0, activeUsers: 0, activeRooms: 0, waitingUsers: 0 });
   }
 
   async function deleteRoom(room) {
@@ -124,6 +129,11 @@ export default function Admin() {
       </header>
 
       <section className="mx-auto mt-6 max-w-6xl">
+        <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <UsageCard label="People online" value={usage.connectedUsers} />
+          <UsageCard label="Active rooms" value={usage.activeRooms} />
+          <UsageCard label="Waiting for 1-to-1" value={usage.waitingUsers} />
+        </div>
         <div className="mb-8">
           <h2 className="font-display text-lg text-white">Live rooms</h2>
           <p className="text-sm text-mist">Monitor activity and remove rooms that break the rules.</p>
@@ -136,7 +146,7 @@ export default function Admin() {
                   <p className="mt-1 text-xs text-mist">{room.activeCount} / {room.maxParticipants} active · creator fingerprint {room.createdByFingerprint}</p>
                   <p className="mt-1 text-xs text-mist/70">Created {new Date(room.createdAt).toLocaleString()}</p>
                 </div>
-                {adminRole === "developer" && <button onClick={() => deleteRoom(room)} className="rounded-lg bg-coral/15 px-3 py-2 text-xs font-semibold text-coral hover:bg-coral/25">Delete room</button>}
+                <button onClick={() => deleteRoom(room)} className="rounded-lg bg-coral/15 px-3 py-2 text-xs font-semibold text-coral hover:bg-coral/25">Delete room</button>
               </article>
             ))}
           </div>
@@ -182,5 +192,15 @@ export default function Admin() {
         </div>
       </section>
     </main>
+  );
+}
+
+function UsageCard({ label, value }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-panel/80 p-4">
+      <p className="text-xs uppercase tracking-wider text-mist">{label}</p>
+      <p className="mt-2 font-display text-3xl font-semibold text-white">{value}</p>
+      <p className="mt-1 text-xs text-signal2">Live now</p>
+    </div>
   );
 }

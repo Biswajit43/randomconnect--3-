@@ -5,6 +5,7 @@ import AdminDevice from "../models/AdminDevice.js";
 import { matchmaker } from "../services/matchmaker.js";
 import { roomState } from "../services/roomState.js";
 import { containsProfanity } from "../utils/profanityFilter.js";
+import { connectedUsers } from "../services/presence.js";
 import {
   ADMIN_COOKIE,
   ADMIN_SESSION_MS,
@@ -300,10 +301,21 @@ router.get(
   })
 );
 
+router.get(
+  "/admin/usage",
+  requireAdmin,
+  asyncRoute(async (_req, res) => {
+    res.json({
+      connectedUsers: connectedUsers(),
+      ...roomState.liveSummary(),
+      waitingUsers: matchmaker.queueSize(),
+    });
+  })
+);
+
 router.delete(
   "/admin/rooms/:id",
   requireAdmin,
-  requireDeveloper,
   asyncRoute(async (req, res) => {
     const room = await Room.findByIdAndDelete(req.params.id).lean();
     if (!room) return res.status(404).json({ error: "Room not found" });

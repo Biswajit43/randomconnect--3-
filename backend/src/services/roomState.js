@@ -87,6 +87,16 @@ class RoomState {
     return counts;
   }
 
+  liveSummary() {
+    let activeUsers = 0;
+    let activeRooms = 0;
+    for (const room of this.rooms.values()) {
+      if (room.participants.size > 0) activeRooms += 1;
+      activeUsers += room.participants.size;
+    }
+    return { activeUsers, activeRooms };
+  }
+
   // --- Moderation: mute -----------------------------------------------------
 
   mute(roomId, fingerprint) {
