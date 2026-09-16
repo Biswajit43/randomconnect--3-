@@ -378,6 +378,27 @@ export function registerGroupRooms(io) {
       safeHandler("group:join", async ({ roomId, displayName }) => {
         if (!socket.data.fingerprint) return; // must identify() first (see signaling.js)
 
+        // Capacity is checked without making the join handshake depend on a
+        // slow database. If Mongo is temporarily unavailable, presence still
+        // works; the room can never be left spinning on the join screen.
+        const lookupTimeout = Symbol("room-capacity-timeout");
+        try {
+          const room = await Promise.race([
+            Room.findById(roomId).select("maxParticipants").lean(),
+            new Promise((resolve) => setTimeout(() => resolve(lookupTimeout), 1200)),
+          ]);
+          if (room !== lookupTimeout && !room) {
+            socket.emit("group:join-rejected", { reason: "room_not_found" });
+            return;
+          }
+          if (room !== lookupTimeout && roomState.participantCount(roomId) >= room.maxParticipants) {
+            socket.emit("group:join-rejected", { reason: "room_full", maxParticipants: room.maxParticipants });
+            return;
+          }
+        } catch (error) {
+          console.error("[groupRooms] room capacity check skipped:", error.message);
+        }
+
         if (roomState.isKicked(roomId, socket.data.fingerprint)) {
           socket.emit("group:removed", { reason: "You were removed from this room." });
           return;
