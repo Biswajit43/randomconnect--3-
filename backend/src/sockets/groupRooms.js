@@ -96,7 +96,7 @@ function getMusicPosition(music, now) {
 
 const roomGames = new Map();
 const GAME_ROUNDS = 5;
-const DRAW_WORDS = ["rocket", "pizza", "dragon", "guitar", "volcano", "rainbow", "hamburger", "snowman", "camera", " pirate", "sunflower", "rollercoaster"];
+const DRAW_WORDS = ["cat", "dog", "sun", "moon", "tree", "house", "car", "ball", "apple", "fish", "book", "phone", "star", "flower", "pizza", "rocket", "rainbow", "snowman"];
 
 function publicGame(game) {
   if (!game) return null;
@@ -490,25 +490,15 @@ export function registerGroupRooms(io) {
     socket.on("group:game-draw", safeHandler("group:game-draw", async ({ roomId, gameId, stroke }, ack) => {
       const game = roomGames.get(roomId);
       if (!game || game.gameId !== gameId || game.type !== "draw" || game.status !== "drawing" || socket.id !== game.drawerId || !stroke || !Array.isArray(stroke.points) || stroke.points.length > 80) { ack?.({ ok: false }); return; }
-      const safeStroke = { color: String(stroke.color || "#ffffff").slice(0, 20), size: Math.min(Math.max(Number(stroke.size) || 4, 1), 24), points: stroke.points.slice(0, 80).map((point) => ({ x: Math.min(Math.max(Number(point.x) || 0, 0), 1), y: Math.min(Math.max(Number(point.y) || 0, 0), 1) })) };
+      const safeStroke = { color: String(stroke.color || "#ffffff").slice(0, 20), size: Math.min(Math.max(Number(stroke.size) || 4, 1), 24), erase: Boolean(stroke.erase), points: stroke.points.slice(0, 80).map((point) => ({ x: Math.min(Math.max(Number(point.x) || 0, 0), 1), y: Math.min(Math.max(Number(point.y) || 0, 0), 1) })) };
       game.drawStrokes.push(safeStroke);
       if (game.drawStrokes.length > 500) game.drawStrokes.shift();
       socket.to(roomId).emit("group:game-draw", { gameId, stroke: safeStroke });
       ack?.({ ok: true });
     }));
 
-    socket.on("group:game-stop", safeHandler("group:game-stop", async ({ roomId }, ack) => {
-      if (!(await canModerateRoom(socket, roomId))) {
-        ack?.({ ok: false, error: "Only a host or music moderator can stop a game." });
-        return;
-      }
-      const game = roomGames.get(roomId);
-      if (game) {
-        clearGameTimer(game);
-        roomGames.delete(roomId);
-        io.to(roomId).emit("group:game-state", null);
-      }
-      ack?.({ ok: true });
+    socket.on("group:game-stop", safeHandler("group:game-stop", async (_payload, ack) => {
+      ack?.({ ok: false, error: "Games finish automatically after the final round." });
     }));
 
     socket.on("group:music-pause", safeHandler("group:music-pause", async ({ roomId }, ack) => {
