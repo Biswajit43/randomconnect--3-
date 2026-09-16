@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { socket, getFingerprint, getDisplayName, getPremiumToken, getAvatarUrl } from "../lib/socket.js";
 import { useWebRTC } from "../hooks/useWebRTC.js";
+
+const VOICE_CONSTRAINTS = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+};
 import VideoTile from "../components/VideoTile.jsx";
 import Controls from "../components/Controls.jsx";
 import ChatPanel from "../components/ChatPanel.jsx";
@@ -44,7 +50,7 @@ export default function ChatRoom() {
     mediaRequested.current = true;
 
     navigator.mediaDevices
-      .getUserMedia({ video: false, audio: true })
+      .getUserMedia({ video: false, audio: VOICE_CONSTRAINTS })
       .then((stream) => {
         localStreamRef.current = stream;
         setLocalStream(stream);

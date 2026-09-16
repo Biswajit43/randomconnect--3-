@@ -19,10 +19,20 @@ export default function VideoTile({
       videoRef.current.srcObject = stream || null;
       setPlaybackBlocked(false);
       const media = videoRef.current;
+      media.volume = 1;
       const tryPlayback = () => media.play().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(!muted));
       media.addEventListener("loadedmetadata", tryPlayback);
+      media.addEventListener("canplay", tryPlayback);
+      media.addEventListener("loadeddata", tryPlayback);
+      const unlockPlayback = () => { if (!muted) tryPlayback(); };
+      document.addEventListener("pointerdown", unlockPlayback, { once: true, passive: true });
       tryPlayback();
-      return () => media.removeEventListener("loadedmetadata", tryPlayback);
+      return () => {
+        media.removeEventListener("loadedmetadata", tryPlayback);
+        media.removeEventListener("canplay", tryPlayback);
+        media.removeEventListener("loadeddata", tryPlayback);
+        document.removeEventListener("pointerdown", unlockPlayback);
+      };
     }
   }, [muted, stream]);
 

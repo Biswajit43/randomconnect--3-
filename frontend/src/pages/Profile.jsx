@@ -110,7 +110,7 @@ export default function Profile() {
                 <div><p className="text-xs uppercase tracking-wider text-violet">Premium profile identity</p><h2 className="mt-1 font-display text-lg font-semibold text-white">{getDisplayName()}</h2><p className="mt-1 text-xs text-mist">Your photo is shared only with people in your active room.</p></div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <label className={`cursor-pointer rounded-lg px-3 py-2 text-xs font-semibold ${premium?.active ? "bg-violet text-ink hover:brightness-110" : "border border-white/10 text-mist"}`}>
+                <label className={`cursor-pointer rounded-lg px-3 py-2 text-xs font-semibold ${canUsePremiumIdentity ? "bg-violet text-ink hover:brightness-110" : "border border-white/10 text-mist"}`}>
                   {canUsePremiumIdentity ? "Upload profile photo" : "Premium photo feature"}
                   <input type="file" accept="image/png,image/jpeg,image/webp" onChange={updateAvatar} className="sr-only" />
                 </label>

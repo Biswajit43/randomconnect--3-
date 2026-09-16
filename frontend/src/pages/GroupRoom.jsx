@@ -16,6 +16,12 @@ const CONVERSATION_SPARKS = [
   "Teach the room one surprisingly useful fact.",
 ];
 
+const VOICE_CONSTRAINTS = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+};
+
 export default function GroupRoom() {
   const { roomId } = useParams();
   const { state } = useLocation();
@@ -70,7 +76,7 @@ export default function GroupRoom() {
     // Room access must not depend on microphone permission. A user can join
     // muted and enable the microphone later from the call controls.
     connectRoom();
-    navigator.mediaDevices?.getUserMedia({ video: false, audio: true }).then((stream) => {
+    navigator.mediaDevices?.getUserMedia({ video: false, audio: VOICE_CONSTRAINTS }).then((stream) => {
       stream.getAudioTracks().forEach((track) => { track.enabled = false; });
       localStreamRef.current = stream;
       setLocalStream(stream);
@@ -196,7 +202,7 @@ export default function GroupRoom() {
     const existingAudioTrack = localStream?.getAudioTracks?.().find((track) => track.readyState === "live");
     if (!existingAudioTrack) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: VOICE_CONSTRAINTS });
         stream.getAudioTracks().forEach((track) => { track.enabled = true; });
         localStreamRef.current = stream;
         setLocalStream(stream);

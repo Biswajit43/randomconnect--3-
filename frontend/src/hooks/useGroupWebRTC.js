@@ -16,6 +16,9 @@ export function useGroupWebRTC({ localStream }) {
   const [connectionStates, setConnectionStates] = useState({});
   const peersRef = useRef(new Map()); // socketId -> RTCPeerConnection
   const negotiatingRef = useRef(new Set());
+  const pendingIceRef = useRef(new Map());
+  const reconnectTimersRef = useRef(new Map());
+  const recoverPeerRef = useRef(() => {});
   const roomIdRef = useRef(null);
 
   const createPeer = useCallback(
@@ -31,6 +34,7 @@ export function useGroupWebRTC({ localStream }) {
       pc.ontrack = (e) => {
         setRemoteStreams((prev) => {
           const incoming = e.streams?.[0] || prev[peerId] || new MediaStream();
+          e.track.enabled = true;
           if (!incoming.getTracks().includes(e.track)) incoming.addTrack(e.track);
           return { ...prev, [peerId]: incoming };
         });
@@ -38,7 +42,16 @@ export function useGroupWebRTC({ localStream }) {
 
       pc.onconnectionstatechange = () => {
         setConnectionStates((current) => ({ ...current, [peerId]: pc.connectionState }));
-        if (["failed", "closed"].includes(pc.connectionState)) {
+        if (["failed", "disconnected"].includes(pc.connectionState)) {
+          if (!reconnectTimersRef.current.has(peerId) && socket.id && socket.id < peerId) {
+            const timer = window.setTimeout(() => {
+              reconnectTimersRef.current.delete(peerId);
+              recoverPeerRef.current(peerId);
+            }, pc.connectionState === "failed" ? 350 : 1200);
+            reconnectTimersRef.current.set(peerId, timer);
+          }
+        }
+        if (pc.connectionState === "closed") {
           removePeer(peerId);
         }
       };
@@ -53,6 +66,7 @@ export function useGroupWebRTC({ localStream }) {
   const removePeer = useCallback((peerId) => {
     peersRef.current.get(peerId)?.close();
     peersRef.current.delete(peerId);
+    pendingIceRef.current.delete(peerId);
     setRemoteStreams((prev) => {
       const next = { ...prev };
       delete next[peerId];
@@ -70,6 +84,7 @@ export function useGroupWebRTC({ localStream }) {
   const connectToExistingPeer = useCallback(
     async (peerId) => {
       const pc = peersRef.current.get(peerId) || createPeer(peerId);
+      if (pc.signalingState === "closed") return;
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       socket.emit("group:webrtc-offer", { roomId: roomIdRef.current, targetId: peerId, sdp: offer });
@@ -77,13 +92,29 @@ export function useGroupWebRTC({ localStream }) {
     [createPeer]
   );
 
+  const recoverPeer = useCallback(async (peerId) => {
+    removePeer(peerId);
+    try {
+      await connectToExistingPeer(peerId);
+    } catch (error) {
+      console.warn("peer audio recovery failed", error);
+    }
+  }, [connectToExistingPeer, removePeer]);
+
+  useEffect(() => {
+    recoverPeerRef.current = recoverPeer;
+  }, [recoverPeer]);
+
   const setRoomId = useCallback((roomId) => {
     roomIdRef.current = roomId;
   }, []);
 
   const closeAll = useCallback(() => {
+    reconnectTimersRef.current.forEach((timer) => clearTimeout(timer));
+    reconnectTimersRef.current.clear();
     peersRef.current.forEach((pc) => pc.close());
     peersRef.current.clear();
+    pendingIceRef.current.clear();
     setRemoteStreams({});
     setConnectionStates({});
     negotiatingRef.current.clear();
@@ -144,11 +175,23 @@ export function useGroupWebRTC({ localStream }) {
       // Reuse the existing connection if one's already open — this is what
       // makes renegotiation (e.g. adding a video track after the call has
       // started) work instead of silently replacing an established peer.
-      const pc = peersRef.current.get(fromId) || createPeer(fromId);
-      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socket.emit("group:webrtc-answer", { roomId, targetId: fromId, sdp: answer });
+      try {
+        let pc = peersRef.current.get(fromId) || createPeer(fromId);
+        if (["failed", "closed"].includes(pc.connectionState)) {
+          removePeer(fromId);
+          pc = createPeer(fromId);
+        }
+        if (pc.signalingState === "have-local-offer") await pc.setLocalDescription({ type: "rollback" });
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        const pending = pendingIceRef.current.get(fromId) || [];
+        for (const candidate of pending) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        pendingIceRef.current.delete(fromId);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit("group:webrtc-answer", { roomId, targetId: fromId, sdp: answer });
+      } catch (error) {
+        console.warn("group offer negotiation failed", error);
+      }
     }
 
     async function onAnswer({ fromId, sdp }) {
@@ -156,6 +199,9 @@ export function useGroupWebRTC({ localStream }) {
       if (pc) {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+          const pending = pendingIceRef.current.get(fromId) || [];
+          for (const candidate of pending) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          pendingIceRef.current.delete(fromId);
         } catch (error) {
           console.warn("setRemoteDescription(answer) failed", error);
         }
@@ -164,9 +210,15 @@ export function useGroupWebRTC({ localStream }) {
 
     async function onIceCandidate({ fromId, candidate }) {
       const pc = peersRef.current.get(fromId);
-      if (pc && candidate) {
+      if (candidate) {
         try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          if (!pc || !pc.remoteDescription) {
+            const pending = pendingIceRef.current.get(fromId) || [];
+            pending.push(candidate);
+            pendingIceRef.current.set(fromId, pending);
+          } else {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          }
         } catch (err) {
           console.warn("addIceCandidate failed", err);
         }
@@ -174,6 +226,9 @@ export function useGroupWebRTC({ localStream }) {
     }
 
     function onPeerLeft({ socketId }) {
+      const timer = reconnectTimersRef.current.get(socketId);
+      if (timer) clearTimeout(timer);
+      reconnectTimersRef.current.delete(socketId);
       removePeer(socketId);
     }
 
