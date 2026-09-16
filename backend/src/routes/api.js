@@ -186,6 +186,7 @@ router.post("/admin/bans", requireAdmin, asyncRoute(async (req, res) => {
   const ban = await BannedUser.create({
     fingerprint: fingerprint ? String(fingerprint).slice(0, 200) : undefined,
     ipHash: ipHash || undefined,
+    matchMode: fingerprint ? "fingerprint" : "ip",
     reason: String(reason || "Admin moderation action").slice(0, 500),
     createdBy: req.adminSession?.accountId || "admin",
     expiresAt: minutes === null ? null : new Date(Date.now() + minutes * 60 * 1000),
@@ -428,6 +429,7 @@ router.post("/admin/reports/:id/approve-ban", requireAdmin, asyncRoute(async (re
   const ban = await BannedUser.create({
     fingerprint: report.reportedFingerprint,
     ipHash: report.reportedIpHash || undefined,
+    matchMode: "fingerprint",
     reason: `Approved report: ${report.reason}`,
     createdBy: req.adminSession?.accountId || "admin",
     expiresAt: minutes === null ? null : new Date(Date.now() + minutes * 60 * 1000),

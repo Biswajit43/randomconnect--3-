@@ -379,8 +379,8 @@ export function registerGroupRooms(io) {
           ack?.({ ok: false, error: "That participant is no longer in this room." });
           return;
         }
-        if (!allowAction(`group-report:${socket.data.ipHash}:${socket.data.fingerprint}`, { limit: 5, windowMs: 60 * 60 * 1000 })) {
-          ack?.({ ok: false, error: "Too many reports. Please try again later." });
+        if (!allowAction(`group-report:${socket.data.ipHash}:${roomId}`, { limit: 1, windowMs: 24 * 60 * 60 * 1000 })) {
+          ack?.({ ok: false, error: "Only one report per network is allowed for this room." });
           return;
         }
         const room = await Room.findById(roomId).select("name").lean();

@@ -23,6 +23,7 @@ export default function GroupRoom() {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
   const [banner, setBanner] = useState(null);
+  const [blockedReason, setBlockedReason] = useState(null);
   const [forceMuted, setForceMuted] = useState(false);
   const [music, setMusic] = useState(null);
   const [reportTargetId, setReportTargetId] = useState(null);
@@ -142,6 +143,7 @@ export default function GroupRoom() {
     }
     function onBlocked({ reason }) {
       identifySent.current = false;
+      setBlockedReason(reason);
       setPhase("blocked");
       if (reason === "server_error") showBanner("The room service could not verify your session. Please try again.");
     }
@@ -237,7 +239,7 @@ export default function GroupRoom() {
   }
   const mod = (event, targetId) => socket.emit(event, { roomId, targetId });
 
-  if (phase === "blocked") return <EmptyState title="Can't join this room" text="Mic access was denied, or this device is currently restricted." action="Back to rooms" onAction={leave} />;
+  if (phase === "blocked") return <EmptyState title="Can't join this room" text={blockedReason === "banned" ? "This device or session is currently restricted. If this seems wrong, ask an administrator to review the active ban." : blockedReason === "age_confirmation_required" ? "Age confirmation is required before joining." : "The room connection could not be verified. Please try again."} action="Back to rooms" onAction={leave} />;
   if (phase === "waiting") return <EmptyState title="You're in the waiting room" text="The host moved you here. You'll rejoin automatically if they let you back in." action="Leave instead" onAction={leave} />;
   if (phase === "connecting-media") return <EmptyState title="Joining your room" text="Connecting securely…" />;
 

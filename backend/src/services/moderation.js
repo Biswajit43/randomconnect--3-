@@ -28,8 +28,17 @@ export function hashIp(ip) {
 }
 
 export async function isBanned({ fingerprint, ipHash }) {
+  const identityMatches = [];
+  if (fingerprint) identityMatches.push({ fingerprint, matchMode: { $ne: "ip" } });
+  if (ipHash) {
+    identityMatches.push({ ipHash, matchMode: "ip" });
+    // Legacy IP-only bans had no matchMode. Do not treat a legacy ban that
+    // also has a fingerprint as an IP ban, otherwise shared networks break.
+    identityMatches.push({ ipHash, fingerprint: { $in: [null, ""] }, matchMode: { $exists: false } });
+  }
+  if (!identityMatches.length) return false;
   const ban = await BannedUser.findOne({
-    $or: [{ fingerprint }, { ipHash }],
+    $or: identityMatches,
     $and: [{ $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }],
   }).catch(() => null);
   return Boolean(ban);
@@ -76,10 +85,4 @@ export async function fileReport({ reporterFingerprint, reporterIpHash, reporter
   }
 
   return report;
-}
-
-export async function autoBanOnRepeatedReports(reportedFingerprint, ipHash) {
-  // Reports are evidence, not an automatic ban trigger. An authorized admin
-  // must approve a report through /admin/reports/:id/approve-ban.
-  return false;
 }

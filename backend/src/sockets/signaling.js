@@ -172,8 +172,8 @@ export function registerSignaling(io) {
     });
 
     socket.on("report:user", async ({ roomId, reason, details } = {}, acknowledge) => {
-      if (!allowAction(`report:${socket.data.ipHash}:${socket.data.fingerprint}`, { limit: 5, windowMs: 60 * 60 * 1000 })) {
-        acknowledge?.({ ok: false, error: "Too many reports. Please try again later." });
+      if (!allowAction(`report:${socket.data.ipHash}:${roomId}`, { limit: 1, windowMs: 24 * 60 * 60 * 1000 })) {
+        acknowledge?.({ ok: false, error: "Only one report per network is allowed for this room." });
         return;
       }
       const partner = getPartner(io, socket.id, roomId);
