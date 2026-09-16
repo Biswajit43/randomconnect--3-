@@ -113,6 +113,7 @@ export default function Rooms() {
         </span>
         <div className="flex items-center gap-2 ml-auto min-w-0 max-w-full">
         <NameBadge name={name} onChange={(n) => { setName(n); setDisplayName(n); }} />
+        <button onClick={() => navigate("/profile")} className="shrink-0 rounded-lg border border-violet/30 px-2.5 py-2 text-xs text-violet hover:bg-violet/10" aria-label="Open profile and rewards" title="Profile and rewards">Profile</button>
         {staffRole && <button onClick={signOutStaff} className="shrink-0 rounded-lg border border-coral/30 px-2.5 py-2 text-xs text-coral hover:bg-coral/10" aria-label="Sign out staff" title="Sign out staff">Sign out</button>}
         <span className="flex items-center gap-2 text-sm text-signal2 font-mono shrink-0">
           <span className="w-2 h-2 rounded-full bg-signal animate-pulse" /> live
@@ -245,7 +246,7 @@ function PremiumReferralCard() {
   async function shareInvite() {
     setBusy(true);
     try {
-      const invite = code ? { code } : await api.premiumReferral(getFingerprint());
+      const invite = await api.premiumReferral(getFingerprint());
       setCode(invite.code);
       const url = `${window.location.origin}/?invite=${encodeURIComponent(invite.code)}`;
       const shareData = { title: "Join me on RandomConnect", text: "Join me and we both get 30 days of Premium free.", url };
@@ -259,7 +260,7 @@ function PremiumReferralCard() {
     } finally { setBusy(false); }
   }
 
-  return <div className="mt-5 rounded-2xl border border-dashed border-violet/50 bg-violet/5 p-4"><p className="font-display font-semibold text-white">Invite a friend</p><p className="mt-1 text-sm text-mist">Both of you get 30 days of Premium free.</p>{code && <p className="mt-3 font-display text-lg font-bold tracking-wider text-violet">{code}</p>}<button onClick={shareInvite} disabled={busy} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-panel2 px-3 py-3 text-sm font-semibold text-white hover:border-violet/50 disabled:opacity-50">{busy ? "Preparing invite…" : "♧ Share invite link"}</button>{status && <p className="mt-2 text-xs text-signal2">{status}</p>}</div>;
+  return <div className="mt-5 rounded-2xl border border-dashed border-violet/50 bg-violet/5 p-4"><p className="font-display font-semibold text-white">Invite a friend</p><p className="mt-1 text-sm text-mist">Both of you get 30 days of Premium free.</p>{code && <p className="mt-3 font-display text-lg font-bold tracking-wider text-violet">{code}</p>}<button onClick={shareInvite} disabled={busy} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-panel2 px-3 py-3 text-sm font-semibold text-white hover:border-violet/50 disabled:opacity-50">{busy ? "Preparing invite…" : "♧ Share invite link"}</button>{status && <p className="mt-2 text-xs text-signal2">{status}</p>}<p className="mt-2 text-center text-[11px] text-mist">View your Premium days and community progress in Profile.</p></div>;
 }
 
 function RoomSkeleton() {

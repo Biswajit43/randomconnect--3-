@@ -11,7 +11,8 @@ import { roomState } from "../services/roomState.js";
 import { containsProfanity } from "../utils/profanityFilter.js";
 import { connectedUsers, adminPresence, abuseSignals, disconnectMatching } from "../services/presence.js";
 import { recordAudit } from "../services/audit.js";
-import { createInviteCode, createReferralCode, createPremiumToken, hashPremiumValue } from "../services/premium.js";
+import { addPremiumDays, createInviteCode, createReferralCode, hashPremiumValue } from "../services/premium.js";
+import { getCommunityStatus, recordSuccessfulReferral } from "../services/community.js";
 import {
   ADMIN_COOKIE,
   ADMIN_SESSION_MS,
@@ -197,8 +198,6 @@ router.post("/premium/referral", asyncRoute(async (req, res) => {
   if (!fingerprint) return res.status(400).json({ error: "Device identity is required" });
   const code = createReferralCode(fingerprint);
   const codeHash = hashPremiumValue(code);
-  const existing = await PremiumInvite.findOne({ codeHash, kind: "referral", expiresAt: { $gt: new Date() } }).lean();
-  if (existing) return res.json({ code, expiresAt: existing.expiresAt, uses: existing.uses, maxUses: existing.maxUses });
   const invite = await PremiumInvite.create({
     codeHash,
     kind: "referral",
@@ -208,28 +207,49 @@ router.post("/premium/referral", asyncRoute(async (req, res) => {
     maxUses: 1,
     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
   });
-  res.status(201).json({ code, expiresAt: invite.expiresAt, uses: 0, maxUses: 1 });
+  const community = await getCommunityStatus(fingerprint).catch((error) => {
+    console.error("[community] status lookup failed:", error.message);
+    return null;
+  });
+  res.status(201).json({ code, expiresAt: invite.expiresAt, uses: 0, maxUses: 1, community });
+}));
+
+router.get("/community/status", asyncRoute(async (req, res) => {
+  const fingerprint = String(req.query.fingerprint || "");
+  if (!fingerprint) return res.status(400).json({ error: "Device identity is required" });
+  res.json(await getCommunityStatus(fingerprint));
+}));
+
+router.get("/premium/status", asyncRoute(async (req, res) => {
+  const fingerprint = String(req.query.fingerprint || "");
+  if (!fingerprint) return res.status(400).json({ error: "Device identity is required" });
+  const grant = await PremiumGrant.findOne({ fingerprint, expiresAt: { $gt: new Date() } }).sort({ expiresAt: -1 }).lean();
+  res.json({ active: Boolean(grant), expiresAt: grant?.expiresAt || null });
 }));
 
 router.post("/premium/redeem", asyncRoute(async (req, res) => {
   const { code, fingerprint } = req.body || {};
   if (!code || !fingerprint) return res.status(400).json({ error: "Invite code and device identity are required" });
   const now = new Date();
-  const existing = await PremiumGrant.findOne({ fingerprint, expiresAt: { $gt: now } }).lean();
-  if (existing) return res.json({ ok: true, token: null, expiresAt: existing.expiresAt, alreadyPremium: true });
+  const candidate = await PremiumInvite.findOne({ codeHash: hashPremiumValue(code), expiresAt: { $gt: now } }).lean();
+  if (!candidate) return res.status(400).json({ error: "Invite is invalid or expired" });
+  if (candidate.kind === "referral" && candidate.ownerFingerprint === fingerprint) return res.status(400).json({ error: "You cannot redeem your own invite" });
   const invite = await PremiumInvite.findOneAndUpdate(
-    { codeHash: hashPremiumValue(code), expiresAt: { $gt: now }, $expr: { $lt: ["$uses", "$maxUses"] } },
+    { _id: candidate._id, expiresAt: { $gt: now }, $expr: { $lt: ["$uses", "$maxUses"] } },
     { $inc: { uses: 1 } },
     { new: true }
   );
   if (!invite) return res.status(400).json({ error: "Invite is invalid, expired, or fully used" });
-  const token = createPremiumToken();
-  const expiresAt = new Date(Math.min(invite.expiresAt.getTime(), Date.now() + 30 * 24 * 60 * 60 * 1000));
-  await PremiumGrant.create({ tokenHash: hashPremiumValue(token), fingerprint, inviteId: invite._id, expiresAt });
+  const recipientGrant = await addPremiumDays(fingerprint, invite._id, 30);
+  let ownerGrant = null;
   if (invite.kind === "referral" && invite.ownerFingerprint && invite.ownerFingerprint !== fingerprint) {
-    await PremiumGrant.create({ tokenHash: hashPremiumValue(createPremiumToken()), fingerprint: invite.ownerFingerprint, inviteId: invite._id, expiresAt });
+    ownerGrant = await addPremiumDays(invite.ownerFingerprint, invite._id, 30);
+    // Premium activation must not fail if the separate community-progress write has a transient DB issue.
+    await recordSuccessfulReferral(invite.ownerFingerprint).catch((error) => {
+      console.error("[community] referral tracking failed:", error.message);
+    });
   }
-  res.json({ ok: true, token, expiresAt });
+  res.json({ ok: true, token: recipientGrant.token, expiresAt: recipientGrant.expiresAt, ownerExpiresAt: ownerGrant?.expiresAt || null });
 }));
 
 router.get("/admin/audit", requireAdmin, asyncRoute(async (_req, res) => {

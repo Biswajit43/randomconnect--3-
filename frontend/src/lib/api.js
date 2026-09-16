@@ -45,4 +45,6 @@ export const api = {
   createPremiumInvite: (payload) => request("/admin/premium-invites", { method: "POST", body: JSON.stringify(payload) }),
   redeemPremium: (code, fingerprint) => request("/premium/redeem", { method: "POST", body: JSON.stringify({ code, fingerprint }) }),
   premiumReferral: (fingerprint) => request("/premium/referral", { method: "POST", body: JSON.stringify({ fingerprint }) }),
+  premiumStatus: (fingerprint) => request(`/premium/status?fingerprint=${encodeURIComponent(fingerprint)}`),
+  communityStatus: (fingerprint) => request(`/community/status?fingerprint=${encodeURIComponent(fingerprint)}`),
 };

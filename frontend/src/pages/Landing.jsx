@@ -59,7 +59,7 @@ export default function Landing() {
       try {
         const result = await api.redeemPremium(premiumCode.trim(), getFingerprint());
         if (result.token) localStorage.setItem("rc_premium_token", result.token);
-        setPremiumMessage(`Premium active until ${new Date(result.expiresAt).toLocaleDateString()}.`);
+        setPremiumMessage("Premium activated. You can view the details in Profile.");
       } catch (error) {
         setPremiumMessage(error.message);
         setPremiumBusy(false);
@@ -249,7 +249,7 @@ export default function Landing() {
                     className="mt-2 w-full bg-ink/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:border-violet/60 transition"
                   />
                   <p className="mt-1.5 text-[11px] text-mist">Invite access lasts 30 days and never opens the admin panel.</p>
-                  {premiumMessage && <p className={`mt-1.5 text-[11px] ${premiumMessage.startsWith("Premium active") ? "text-signal2" : "text-coral"}`}>{premiumMessage}</p>}
+                  {premiumMessage && <p className={`mt-1.5 text-[11px] ${premiumMessage.startsWith("Premium activated") ? "text-signal2" : "text-coral"}`}>{premiumMessage}</p>}
                 </div>
 
                 <div className="flex items-start gap-2.5 rounded-lg border border-signal/15 bg-signal/5 px-3 py-2.5 text-left mb-3">

@@ -14,10 +14,21 @@ export function createPremiumToken() {
 }
 
 export function createReferralCode(fingerprint) {
-  const period = Math.floor(Date.now() / (30 * 24 * 60 * 60 * 1000));
-  const secret = process.env.PREMIUM_INVITE_SECRET || process.env.ADMIN_SESSION_SECRET || "randomconnect-premium-invite";
-  const digest = crypto.createHmac("sha256", secret).update(`${fingerprint}:${period}`).digest("hex").slice(0, 16).toUpperCase();
-  return `RC-REF-${digest}`;
+  return `RC-REF-${crypto.randomBytes(8).toString("hex").toUpperCase()}`;
+}
+
+export async function addPremiumDays(fingerprint, inviteId, days = 30) {
+  const now = Date.now();
+  const existing = await PremiumGrant.findOne({ fingerprint, expiresAt: { $gt: new Date(now) } }).sort({ expiresAt: -1 });
+  const expiresAt = new Date((existing ? existing.expiresAt.getTime() : now) + days * 24 * 60 * 60 * 1000);
+  if (existing) {
+    existing.expiresAt = expiresAt;
+    await existing.save();
+    return { token: null, expiresAt };
+  }
+  const token = createPremiumToken();
+  await PremiumGrant.create({ tokenHash: hashPremiumValue(token), fingerprint, inviteId, expiresAt });
+  return { token, expiresAt };
 }
 
 export async function verifyPremiumToken(token, fingerprint) {

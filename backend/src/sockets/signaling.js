@@ -101,7 +101,7 @@ export function registerSignaling(io) {
 
         noteIdentity(socket);
 
-        socket.emit("identified", { ok: true, displayName: socket.data.displayName, role: socket.data.role, premiumExpiresAt: premiumGrant?.expiresAt || null });
+        socket.emit("identified", { ok: true, displayName: socket.data.displayName, role: socket.data.role });
       } catch (err) {
         // identify() is the entry point for both the 1-to-1 flow and group
         // rooms — if this silently fails, the client just hangs on
