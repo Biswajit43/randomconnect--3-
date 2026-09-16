@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { socket, getFingerprint, getDisplayName } from "../lib/socket.js";
+import { socket, getFingerprint, getDisplayName, getPremiumToken } from "../lib/socket.js";
 import { useWebRTC } from "../hooks/useWebRTC.js";
 import VideoTile from "../components/VideoTile.jsx";
 import Controls from "../components/Controls.jsx";
@@ -22,7 +22,7 @@ export default function ChatRoom() {
   const [roomId, setRoomId] = useState(null);
   const [blockedReason, setBlockedReason] = useState(null);
   const [reportOpen, setReportOpen] = useState(false);
-  const [role, setRole] = useState("user");
+  const [role, setRole] = useState(() => localStorage.getItem("rc_staff_role") || "user");
 
   const { remoteStream, connectionState, startCall, endCall, addVideoTrack } = useWebRTC({ localStream });
   const mediaRequested = useRef(false);
@@ -46,7 +46,7 @@ export default function ChatRoom() {
         localStreamRef.current = stream;
         setLocalStream(stream);
         socket.connect();
-        socket.emit("identify", { fingerprint: getFingerprint(), displayName: getDisplayName(), ageConfirmed: true });
+        socket.emit("identify", { fingerprint: getFingerprint(), displayName: getDisplayName(), ageConfirmed: true, premiumToken: getPremiumToken() });
       })
       .catch(() => {
         setPhase("blocked");

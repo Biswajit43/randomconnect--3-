@@ -2,6 +2,8 @@ import { Router } from "express";
 import Report from "../models/Report.js";
 import BannedUser from "../models/BannedUser.js";
 import AuditLog from "../models/AuditLog.js";
+import PremiumInvite from "../models/PremiumInvite.js";
+import PremiumGrant from "../models/PremiumGrant.js";
 import Room from "../models/Room.js";
 import AdminDevice from "../models/AdminDevice.js";
 import { matchmaker } from "../services/matchmaker.js";
@@ -9,6 +11,7 @@ import { roomState } from "../services/roomState.js";
 import { containsProfanity } from "../utils/profanityFilter.js";
 import { connectedUsers, adminPresence, abuseSignals, disconnectMatching } from "../services/presence.js";
 import { recordAudit } from "../services/audit.js";
+import { createInviteCode, createReferralCode, createPremiumToken, hashPremiumValue } from "../services/premium.js";
 import {
   ADMIN_COOKIE,
   ADMIN_SESSION_MS,
@@ -167,6 +170,67 @@ router.post("/admin/logout", asyncRoute(async (req, res) => {
 }));
 
 router.get("/admin/session", requireAdmin, (req, res) => res.json({ authenticated: true, role: getAdminRole(req) }));
+
+router.get("/admin/premium-invites", requireAdmin, asyncRoute(async (_req, res) => {
+  res.json(await PremiumInvite.find().sort({ createdAt: -1 }).limit(100).lean());
+}));
+
+router.post("/admin/premium-invites", requireAdmin, asyncRoute(async (req, res) => {
+  const { label, maxUses, days = 30 } = req.body || {};
+  const safeDays = Math.min(Math.max(Number(days) || 30, 1), 30);
+  const safeMaxUses = Math.min(Math.max(Number(maxUses) || 10, 1), 1000);
+  const code = createInviteCode();
+  const invite = await PremiumInvite.create({
+    codeHash: hashPremiumValue(code),
+    label: String(label || "Premium invite").trim().slice(0, 80),
+    createdBy: req.adminSession?.accountId || "admin",
+    kind: "admin",
+    maxUses: safeMaxUses,
+    expiresAt: new Date(Date.now() + safeDays * 24 * 60 * 60 * 1000),
+  });
+  await recordAudit({ action: "premium.invite_created", actor: req.adminSession, targetId: invite._id.toString(), metadata: { maxUses: safeMaxUses, days: safeDays } });
+  res.status(201).json({ ...invite.toObject(), code });
+}));
+
+router.post("/premium/referral", asyncRoute(async (req, res) => {
+  const { fingerprint } = req.body || {};
+  if (!fingerprint) return res.status(400).json({ error: "Device identity is required" });
+  const code = createReferralCode(fingerprint);
+  const codeHash = hashPremiumValue(code);
+  const existing = await PremiumInvite.findOne({ codeHash, kind: "referral", expiresAt: { $gt: new Date() } }).lean();
+  if (existing) return res.json({ code, expiresAt: existing.expiresAt, uses: existing.uses, maxUses: existing.maxUses });
+  const invite = await PremiumInvite.create({
+    codeHash,
+    kind: "referral",
+    label: "Friend referral",
+    createdBy: fingerprint,
+    ownerFingerprint: fingerprint,
+    maxUses: 1,
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  });
+  res.status(201).json({ code, expiresAt: invite.expiresAt, uses: 0, maxUses: 1 });
+}));
+
+router.post("/premium/redeem", asyncRoute(async (req, res) => {
+  const { code, fingerprint } = req.body || {};
+  if (!code || !fingerprint) return res.status(400).json({ error: "Invite code and device identity are required" });
+  const now = new Date();
+  const existing = await PremiumGrant.findOne({ fingerprint, expiresAt: { $gt: now } }).lean();
+  if (existing) return res.json({ ok: true, token: null, expiresAt: existing.expiresAt, alreadyPremium: true });
+  const invite = await PremiumInvite.findOneAndUpdate(
+    { codeHash: hashPremiumValue(code), expiresAt: { $gt: now }, $expr: { $lt: ["$uses", "$maxUses"] } },
+    { $inc: { uses: 1 } },
+    { new: true }
+  );
+  if (!invite) return res.status(400).json({ error: "Invite is invalid, expired, or fully used" });
+  const token = createPremiumToken();
+  const expiresAt = new Date(Math.min(invite.expiresAt.getTime(), Date.now() + 30 * 24 * 60 * 60 * 1000));
+  await PremiumGrant.create({ tokenHash: hashPremiumValue(token), fingerprint, inviteId: invite._id, expiresAt });
+  if (invite.kind === "referral" && invite.ownerFingerprint && invite.ownerFingerprint !== fingerprint) {
+    await PremiumGrant.create({ tokenHash: hashPremiumValue(createPremiumToken()), fingerprint: invite.ownerFingerprint, inviteId: invite._id, expiresAt });
+  }
+  res.json({ ok: true, token, expiresAt });
+}));
 
 router.get("/admin/audit", requireAdmin, asyncRoute(async (_req, res) => {
   res.json(await AuditLog.find().sort({ createdAt: -1 }).limit(200).lean());
@@ -357,6 +421,7 @@ router.get(
       connectedUsers: connectedUsers(),
       ...roomState.liveSummary(),
       waitingUsers: matchmaker.queueSize(),
+      pendingReports: await Report.countDocuments({ status: "pending" }),
     });
   })
 );
@@ -430,6 +495,8 @@ router.post("/admin/reports/:id/approve-ban", requireAdmin, asyncRoute(async (re
     fingerprint: report.reportedFingerprint,
     ipHash: report.reportedIpHash || undefined,
     matchMode: "fingerprint",
+    displayName: report.reportedDisplayName || "",
+    locationLabel: report.reportedLocation || "",
     reason: `Approved report: ${report.reason}`,
     createdBy: req.adminSession?.accountId || "admin",
     expiresAt: minutes === null ? null : new Date(Date.now() + minutes * 60 * 1000),

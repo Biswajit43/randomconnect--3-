@@ -41,4 +41,8 @@ export const api = {
   createAdminBan: (payload) => request("/admin/bans", { method: "POST", body: JSON.stringify(payload) }),
   removeAdminBan: (id) => request(`/admin/bans/${id}`, { method: "DELETE" }),
   adminAudit: () => request("/admin/audit"),
+  adminPremiumInvites: () => request("/admin/premium-invites"),
+  createPremiumInvite: (payload) => request("/admin/premium-invites", { method: "POST", body: JSON.stringify(payload) }),
+  redeemPremium: (code, fingerprint) => request("/premium/redeem", { method: "POST", body: JSON.stringify({ code, fingerprint }) }),
+  premiumReferral: (fingerprint) => request("/premium/referral", { method: "POST", body: JSON.stringify({ fingerprint }) }),
 };

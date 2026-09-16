@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import PulseConnector from "../components/PulseConnector.jsx";
-import { getDisplayName, setDisplayName } from "../lib/socket.js";
+import { getDisplayName, setDisplayName, getFingerprint } from "../lib/socket.js";
 import { api } from "../lib/api.js";
 
 const HEADLINE_WORDS = ["A", "better", "way", "to"];
@@ -19,6 +19,9 @@ export default function Landing() {
   const { state } = useLocation();
   const [name, setName] = useState(() => getDisplayName());
   const [interests, setInterests] = useState("");
+  const [premiumCode, setPremiumCode] = useState("");
+  const [premiumMessage, setPremiumMessage] = useState("");
+  const [premiumBusy, setPremiumBusy] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [agreedRules, setAgreedRules] = useState(false);
   const [waitingCount, setWaitingCount] = useState(null);
@@ -26,6 +29,11 @@ export default function Landing() {
   const [taglineIndex, setTaglineIndex] = useState(0);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [staffAccessOpen, setStaffAccessOpen] = useState(false);
+
+  useEffect(() => {
+    const invite = new URLSearchParams(window.location.search).get("invite");
+    if (invite) setPremiumCode(invite);
+  }, []);
 
   const canEnter = name.trim().length > 0 && ageConfirmed && agreedRules;
   const trimmedName = name.trim();
@@ -44,8 +52,21 @@ export default function Landing() {
     return () => clearInterval(interval);
   }, []);
 
-  function enter() {
+  async function enter() {
     if (!canEnter) return;
+    if (premiumCode.trim()) {
+      setPremiumBusy(true);
+      try {
+        const result = await api.redeemPremium(premiumCode.trim(), getFingerprint());
+        if (result.token) localStorage.setItem("rc_premium_token", result.token);
+        setPremiumMessage(`Premium active until ${new Date(result.expiresAt).toLocaleDateString()}.`);
+      } catch (error) {
+        setPremiumMessage(error.message);
+        setPremiumBusy(false);
+        return;
+      }
+      setPremiumBusy(false);
+    }
     setDisplayName(name);
     const tags = interests
       .split(",")
@@ -219,6 +240,18 @@ export default function Landing() {
                   className="w-full bg-ink/60 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:border-signal/60 focus-visible:outline-signal transition mb-3"
                 />
 
+                <div className="mb-3 rounded-xl border border-violet/20 bg-violet/5 p-3">
+                  <label className="block text-[11px] font-mono uppercase tracking-wide text-violet">Premium invite (optional)</label>
+                  <input
+                    value={premiumCode}
+                    onChange={(e) => setPremiumCode(e.target.value.toUpperCase())}
+                    placeholder="RC-PREMIUM-..."
+                    className="mt-2 w-full bg-ink/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:border-violet/60 transition"
+                  />
+                  <p className="mt-1.5 text-[11px] text-mist">Invite access lasts 30 days and never opens the admin panel.</p>
+                  {premiumMessage && <p className={`mt-1.5 text-[11px] ${premiumMessage.startsWith("Premium active") ? "text-signal2" : "text-coral"}`}>{premiumMessage}</p>}
+                </div>
+
                 <div className="flex items-start gap-2.5 rounded-lg border border-signal/15 bg-signal/5 px-3 py-2.5 text-left mb-3">
                   <span className="text-base leading-none text-signal" aria-hidden="true">♪</span>
                   <p className="text-xs text-mist">
@@ -280,10 +313,10 @@ export default function Landing() {
 
               <button
                 onClick={enter}
-                disabled={!canEnter}
+                disabled={!canEnter || premiumBusy}
                 className="w-full py-4 sm:py-3.5 rounded-xl bg-signal text-ink font-display font-semibold text-base sm:text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:brightness-110 active:scale-[0.98] transition shadow-lg shadow-signal/20"
               >
-                Continue securely <span aria-hidden="true">→</span>
+                {premiumBusy ? "Activating premium…" : "Continue securely"} <span aria-hidden="true">→</span>
               </button>
               {!trimmedName && (
                 <p className="text-xs text-mist/60 mt-2 text-center">A name is required so people know who they're talking to.</p>

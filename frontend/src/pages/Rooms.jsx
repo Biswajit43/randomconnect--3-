@@ -155,6 +155,7 @@ export default function Rooms() {
           >
             Start 1-to-1 call
           </button>
+          <PremiumReferralCard />
         </aside>
 
         {/* Right: group rooms — anyone can create, anyone can join */}
@@ -234,6 +235,31 @@ export default function Rooms() {
       <CreateRoomModal open={modalOpen} onClose={() => setModalOpen(false)} onCreate={handleCreate} creating={creating} />
     </div>
   );
+}
+
+function PremiumReferralCard() {
+  const [code, setCode] = useState("");
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function shareInvite() {
+    setBusy(true);
+    try {
+      const invite = code ? { code } : await api.premiumReferral(getFingerprint());
+      setCode(invite.code);
+      const url = `${window.location.origin}/?invite=${encodeURIComponent(invite.code)}`;
+      const shareData = { title: "Join me on RandomConnect", text: "Join me and we both get 30 days of Premium free.", url };
+      if (navigator.share) await navigator.share(shareData);
+      else {
+        await navigator.clipboard.writeText(url);
+        setStatus("Invite link copied.");
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") setStatus(error.message || "Could not create invite.");
+    } finally { setBusy(false); }
+  }
+
+  return <div className="mt-5 rounded-2xl border border-dashed border-violet/50 bg-violet/5 p-4"><p className="font-display font-semibold text-white">Invite a friend</p><p className="mt-1 text-sm text-mist">Both of you get 30 days of Premium free.</p>{code && <p className="mt-3 font-display text-lg font-bold tracking-wider text-violet">{code}</p>}<button onClick={shareInvite} disabled={busy} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-panel2 px-3 py-3 text-sm font-semibold text-white hover:border-violet/50 disabled:opacity-50">{busy ? "Preparing invite…" : "♧ Share invite link"}</button>{status && <p className="mt-2 text-xs text-signal2">{status}</p>}</div>;
 }
 
 function RoomSkeleton() {

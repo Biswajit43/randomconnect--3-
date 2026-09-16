@@ -143,6 +143,17 @@ button:disabled {
   border: 1px solid rgba(190, 177, 255, 0.35);
 }
 
+.role-premium {
+  border-color: rgba(167, 139, 250, 0.65) !important;
+  box-shadow: 0 0 18px rgba(167, 139, 250, 0.14);
+}
+
+.role-badge-premium {
+  color: #f1edff;
+  background: rgba(124, 91, 190, 0.82);
+  border: 1px solid rgba(212, 196, 255, 0.4);
+}
+
 .role-entrance-developer {
   color: #17130a;
   background: rgba(250, 204, 21, 0.92);

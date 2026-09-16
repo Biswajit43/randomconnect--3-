@@ -62,7 +62,7 @@ export async function moderateFrame(_frameBuffer) {
   return { flagged: false, categories: [] };
 }
 
-export async function fileReport({ reporterFingerprint, reporterIpHash, reporterDisplayName, reportedFingerprint, reportedDisplayName, reportedIpHash, reportedRoomName, roomId, reason, details }) {
+export async function fileReport({ reporterFingerprint, reporterIpHash, reporterDisplayName, reporterLocation, reportedFingerprint, reportedDisplayName, reportedIpHash, reportedRoomName, reportedLocation, roomId, reason, details }) {
   const severity = ["minor_endangerment", "nudity_sexual_content"].includes(reason)
     ? "critical"
     : "medium";
@@ -71,10 +71,12 @@ export async function fileReport({ reporterFingerprint, reporterIpHash, reporter
 		reporterFingerprint,
 		reporterIpHash: reporterIpHash || "",
 		reporterDisplayName: String(reporterDisplayName || "").slice(0, 30),
+		reporterLocation: String(reporterLocation || "").slice(0, 80),
 		reportedFingerprint,
 		reportedDisplayName: String(reportedDisplayName || "").slice(0, 30),
 		reportedIpHash: reportedIpHash || "",
 		reportedRoomName: String(reportedRoomName || "").slice(0, 60),
+		reportedLocation: String(reportedLocation || "").slice(0, 80),
     roomId,
     reason,
     details,

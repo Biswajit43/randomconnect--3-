@@ -6,6 +6,7 @@ import AdminDevice from "../models/AdminDevice.js";
 import { allowAction } from "../services/abuse.js";
 import { noteIdentity, noteJoin } from "../services/presence.js";
 import Room from "../models/Room.js";
+import { verifyPremiumToken } from "../services/premium.js";
 
 // roomId -> { members: [socketId, socketId], fingerprints: {socketId: fp} }
 const activeRooms = new Map();
@@ -35,6 +36,12 @@ export function registerSignaling(io) {
     const ip = socket.handshake.address;
     const ipHash = hashIp(ip);
     socket.data.ipHash = ipHash;
+    socket.data.locationLabel = String(
+      socket.handshake.headers["cf-ipcountry"] ||
+      socket.handshake.headers["x-vercel-ip-country"] ||
+      socket.handshake.headers["x-country-code"] ||
+      ""
+    ).slice(0, 80);
     const cookieHeader = socket.handshake.headers.cookie || "";
     // Socket.IO invokes connection listeners independently. Keep the async
     // device check as a promise so identify() cannot run before the role is
@@ -66,7 +73,7 @@ export function registerSignaling(io) {
     // A lightweight fingerprint the client generates (canvas/webgl hash etc.)
     // and sends on connect. Not spoof-proof, but raises the cost of evasion
     // when combined with IP hashing.
-    socket.on("identify", async ({ fingerprint, displayName, ageConfirmed }) => {
+    socket.on("identify", async ({ fingerprint, displayName, ageConfirmed, premiumToken }) => {
       try {
         await socket.data.identityReady;
         if (!ageConfirmed) {
@@ -77,6 +84,8 @@ export function registerSignaling(io) {
 
         socket.data.fingerprint = fingerprint || uuid();
         const requestedName = (displayName || "").trim().slice(0, 30);
+        const premiumGrant = socket.data.role === "user" ? await verifyPremiumToken(premiumToken, socket.data.fingerprint) : null;
+        if (premiumGrant) socket.data.role = "premium";
         socket.data.displayName = socket.data.role === "developer"
           ? socket.data.staffDisplayName || "Developer"
           : socket.data.role === "admin"
@@ -92,7 +101,7 @@ export function registerSignaling(io) {
 
         noteIdentity(socket);
 
-        socket.emit("identified", { ok: true, displayName: socket.data.displayName, role: socket.data.role });
+        socket.emit("identified", { ok: true, displayName: socket.data.displayName, role: socket.data.role, premiumExpiresAt: premiumGrant?.expiresAt || null });
       } catch (err) {
         // identify() is the entry point for both the 1-to-1 flow and group
         // rooms — if this silently fails, the client just hangs on
@@ -172,6 +181,10 @@ export function registerSignaling(io) {
         acknowledge?.({ ok: false });
         return;
       }
+      if ((partner.data.role || "user") !== "user") {
+        acknowledge?.({ ok: false, error: "Administrators and developers cannot be reported." });
+        return;
+      }
 
       try {
         const room = await Room.findById(roomId).select("name").lean();
@@ -179,9 +192,11 @@ export function registerSignaling(io) {
           reporterFingerprint: socket.data.fingerprint,
           reporterIpHash: socket.data.ipHash,
           reporterDisplayName: socket.data.displayName,
+          reporterLocation: socket.data.locationLabel,
           reportedFingerprint: partner.data.fingerprint,
           reportedDisplayName: partner.data.displayName,
           reportedIpHash: partner.data.ipHash,
+          reportedLocation: partner.data.locationLabel,
           reportedRoomName: room?.name,
           roomId,
           reason: typeof reason === "string" ? reason.slice(0, 80) : "other",

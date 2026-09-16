@@ -43,3 +43,7 @@ export function setDisplayName(name) {
   if (clean) localStorage.setItem("rc_name", clean);
   return clean;
 }
+
+export function getPremiumToken() {
+  return localStorage.getItem("rc_premium_token") || "";
+}

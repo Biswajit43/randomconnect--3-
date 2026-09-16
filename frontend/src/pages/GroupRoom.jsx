@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { socket, getDisplayName, getFingerprint } from "../lib/socket.js";
+import { socket, getDisplayName, getFingerprint, getPremiumToken } from "../lib/socket.js";
 import { api } from "../lib/api.js";
 import { useGroupWebRTC } from "../hooks/useGroupWebRTC.js";
 import VideoTile from "../components/VideoTile.jsx";
@@ -30,7 +30,7 @@ export default function GroupRoom() {
   const [socketReady, setSocketReady] = useState(socket.connected);
   const chatScrollRef = useRef(null);
   const displayName = useRef(getDisplayName() || `Guest-${getFingerprint().slice(0, 4)}`);
-  const [role, setRole] = useState("user");
+  const [role, setRole] = useState(() => localStorage.getItem("rc_staff_role") || "user");
   const localStreamRef = useRef(null);
   const mediaRequested = useRef(false);
   const identifySent = useRef(false);
@@ -139,7 +139,7 @@ export default function GroupRoom() {
     function identify() {
       if (identifySent.current) return;
       identifySent.current = true;
-      socket.emit("identify", { fingerprint: getFingerprint(), displayName: displayName.current, ageConfirmed: true });
+      socket.emit("identify", { fingerprint: getFingerprint(), displayName: displayName.current, ageConfirmed: true, premiumToken: getPremiumToken() });
     }
     function onBlocked({ reason }) {
       identifySent.current = false;
@@ -289,14 +289,18 @@ export default function GroupRoom() {
         <div className="flex flex-col gap-3 sm:gap-4 min-h-0">
           <MusicPlayerBoundary music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />
           <div className={`relative z-20 grid ${gridCols} gap-2 sm:gap-3 flex-1 content-start animate-enter`}>
-            <VideoTile stream={localStream} muted mirrored label={displayName.current} role={role} />
+            <div className="relative">
+              <VideoTile stream={localStream} muted mirrored label={displayName.current} role={role} />
+              {isModerator && <span className="absolute top-3 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">HOST / MOD</span>}
+            </div>
             {visiblePeers.map((peer) => (
               <div key={peer.socketId} className="relative z-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[60]">
                 <VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName || "Guest"} role={peer.role || "user"} />
-                {role === "user" && <button onClick={() => setReportTargetId(peer.socketId)} className="absolute top-11 left-2 z-10 rounded-md border border-coral/30 bg-black/75 px-2.5 py-1 text-[11px] font-medium text-coral backdrop-blur hover:bg-coral/20">Report</button>}
+                {peer.isModerator && <span className="absolute top-11 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">HOST / MOD</span>}
+                {role === "user" && (peer.role || "user") === "user" && <button onClick={() => setReportTargetId(peer.socketId)} className="absolute top-2 left-2 z-10 rounded-md border border-coral/30 bg-black/75 px-2.5 py-1 text-[11px] font-medium text-coral backdrop-blur hover:bg-coral/20">Report</button>}
                 {mutedPeers.has(peer.socketId) && <span className="absolute top-20 left-2 z-10 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}
                 {isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator || (role === "admin" && peer.role === "user")) && (
-                  <ModMenu isDeveloper={role === "developer"} isAdmin={role === "admin"} isModerator={peer.isModerator} targetRole={peer.role || "user"} isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} onDemote={() => mod("group:mod-demote", peer.socketId)} />
+                  <ModMenu isDeveloper={role === "developer"} isAdmin={role === "admin"} isPremium={role === "premium"} isModerator={peer.isModerator} targetRole={peer.role || "user"} isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} onDemote={() => mod("group:mod-demote", peer.socketId)} />
                 )}
               </div>
             ))}
@@ -367,7 +371,7 @@ function IconButton({ active, disabled, onClick, label, children }) {
   );
 }
 
-function ModMenu({ isDeveloper, isAdmin, isModerator, targetRole, isMuted, onMute, onUnmute, onWaiting, onRemove, onPromote, onDemote }) {
+function ModMenu({ isDeveloper, isAdmin, isPremium, isModerator, targetRole, isMuted, onMute, onUnmute, onWaiting, onRemove, onPromote, onDemote }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
   useEffect(() => {
@@ -379,7 +383,8 @@ function ModMenu({ isDeveloper, isAdmin, isModerator, targetRole, isMuted, onMut
     return () => document.removeEventListener("pointerdown", onOutside);
   }, [open]);
   const canDemote = isModerator && (isDeveloper || (isAdmin && targetRole === "user"));
-  const items = isMuted ? [["Unmute", onUnmute], ["Waiting room", onWaiting], ...(!isModerator ? [["Make moderator", onPromote]] : []), ...(canDemote ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]] : [["Mute mic", onMute], ["Waiting room", onWaiting], ...(!isModerator ? [["Make moderator", onPromote]] : []), ...(canDemote ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]];
+  const promoteAction = !isModerator && !isPremium ? [["Make moderator", onPromote]] : [];
+  const items = isMuted ? [["Unmute", onUnmute], ["Waiting room", onWaiting], ...promoteAction, ...(canDemote ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]] : [["Mute mic", onMute], ["Waiting room", onWaiting], ...promoteAction, ...(canDemote ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]];
   return (
     <div ref={menuRef} className="absolute top-2 right-2 z-40" data-menu-open={open}>
       <button

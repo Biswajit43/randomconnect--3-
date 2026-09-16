@@ -10,6 +10,8 @@ const bannedUserSchema = new mongoose.Schema(
 		fingerprint: { type: String, index: true },
 		ipHash: { type: String, index: true },
 		matchMode: { type: String, enum: ["fingerprint", "ip"], default: "fingerprint", index: true },
+		displayName: { type: String, default: "" },
+		locationLabel: { type: String, default: "" },
 		reason: { type: String, required: true },
 		createdBy: { type: String, default: "system" },
 		reportIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Report" }],

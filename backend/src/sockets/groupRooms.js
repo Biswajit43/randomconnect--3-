@@ -65,7 +65,7 @@ function roleOf(socket) {
 async function canModerateRoom(socket, roomId) {
   if (!roomId || !socket.data.groupRooms?.has(roomId)) return false;
   const role = roleOf(socket);
-  if (role === "developer" || role === "admin") return true;
+  if (role === "developer" || role === "admin" || role === "premium") return true;
   return isModeratorOfRoom(roomId, socket.data.fingerprint);
 }
 
@@ -78,6 +78,7 @@ async function canActOnTarget(socket, roomId, target) {
   if (targetRole === "developer") return false;
   if (actorRole === "admin") return targetRole === "user";
   if (actorRole === "developer") return true;
+  if (actorRole === "premium") return targetRole === "user" && !target.data.isModeratorByRoom?.[roomId];
   return targetRole === "user" && isModeratorOfRoom(roomId, socket.data.fingerprint);
 }
 
@@ -113,7 +114,7 @@ export function registerGroupRooms(io) {
         // normal moderator check cannot be used during the first join.
         // Resolve the initial host state directly from the verified role or
         // the room creator/moderator record.
-        const isModerator = roleOf(socket) === "developer" || roleOf(socket) === "admin"
+        const isModerator = ["developer", "admin", "premium"].includes(roleOf(socket))
           ? true
           : await isModeratorOfRoom(roomId, socket.data.fingerprint);
 
@@ -374,6 +375,10 @@ export function registerGroupRooms(io) {
           ack?.({ ok: false, error: "That participant is no longer in this room." });
           return;
         }
+        if ((target.data.role || "user") !== "user") {
+          ack?.({ ok: false, error: "Administrators and developers cannot be reported." });
+          return;
+        }
         if (!allowAction(`group-report:${socket.data.ipHash}:${roomId}`, { limit: 1, windowMs: 24 * 60 * 60 * 1000 })) {
           ack?.({ ok: false, error: "Only one report per network is allowed for this room." });
           return;
@@ -383,9 +388,11 @@ export function registerGroupRooms(io) {
           reporterFingerprint: socket.data.fingerprint,
           reporterIpHash: socket.data.ipHash,
           reporterDisplayName: socket.data.displayName,
+          reporterLocation: socket.data.locationLabel,
           reportedFingerprint: target.data.fingerprint,
           reportedDisplayName: target.data.displayName,
           reportedIpHash: target.data.ipHash,
+          reportedLocation: target.data.locationLabel,
           reportedRoomName: room?.name,
           roomId,
           reason: typeof reason === "string" ? reason.slice(0, 80) : "other",
@@ -398,6 +405,7 @@ export function registerGroupRooms(io) {
     socket.on(
       "group:mod-promote",
       safeHandler("group:mod-promote", async ({ roomId, targetId }) => {
+        if (roleOf(socket) === "premium") return;
         const target = io.sockets.sockets.get(targetId);
         if (!(await canActOnTarget(socket, roomId, target))) return;
 

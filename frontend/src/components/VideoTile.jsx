@@ -216,7 +216,7 @@ export default function VideoTile({
         transition-all
         duration-200
 
-        ${role === "developer" ? "role-developer" : role === "admin" ? "role-admin" : ""}
+        ${role === "developer" ? "role-developer" : role === "admin" ? "role-admin" : role === "premium" ? "role-premium" : ""}
         ${
           isSpeaking
             ? "border-2 border-signal shadow-[0_0_0_2px_rgba(76,201,240,0.25),0_0_24px_rgba(76,201,240,0.4)]"
@@ -248,8 +248,8 @@ export default function VideoTile({
       )}
 
       {role !== "user" && (
-        <span className={`absolute top-3 left-3 rounded-md px-2 py-1 font-mono text-[10px] font-bold tracking-[0.14em] backdrop-blur ${role === "developer" ? "role-badge-developer" : "role-badge-admin"}`}>
-          {role === "developer" ? "◈ DEVELOPER" : "ADMIN"}
+        <span className={`absolute top-3 left-3 rounded-md px-2 py-1 font-mono text-[10px] font-bold tracking-[0.14em] backdrop-blur ${role === "developer" ? "role-badge-developer" : role === "premium" ? "role-badge-premium" : "role-badge-admin"}`}>
+          {role === "developer" ? "◈ DEVELOPER" : role === "premium" ? "PREMIUM" : "ADMIN"}
         </span>
       )}
 
