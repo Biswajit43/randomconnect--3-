@@ -8,6 +8,8 @@ import mongoose from "mongoose";
 const reportSchema = new mongoose.Schema(
 	{
 		reporterFingerprint: { type: String, required: true, index: true },
+		reporterIpHash: { type: String, default: "" },
+		reporterDisplayName: { type: String, default: "" },
 		reportedFingerprint: { type: String, required: true, index: true },
 		reportedDisplayName: { type: String, default: "" },
 		reportedIpHash: { type: String, default: "" },

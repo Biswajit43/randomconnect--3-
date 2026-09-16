@@ -31,6 +31,7 @@ export const api = {
   adminSession: () => request("/admin/session"),
   adminReports: (status = "pending") => request(`/admin/reports?status=${encodeURIComponent(status)}`),
   updateAdminReport: (id, status) => request(`/admin/reports/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+  approveAdminReportBan: (id, duration) => request(`/admin/reports/${id}/approve-ban`, { method: "POST", body: JSON.stringify({ duration }) }),
   adminRooms: () => request("/admin/rooms"),
   adminUsage: () => request("/admin/usage"),
   deleteAdminRoom: (id) => request(`/admin/rooms/${id}`, { method: "DELETE" }),

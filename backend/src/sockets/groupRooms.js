@@ -3,6 +3,7 @@ import Room from "../models/Room.js";
 import { searchTrack, parseYouTubeId, getYouTubeMetadata } from "../services/musicService.js";
 import { allowAction } from "../services/abuse.js";
 import { noteJoin } from "../services/presence.js";
+import { fileReport } from "../services/moderation.js";
 
 /**
  * Group rooms use a full-mesh WebRTC topology: every participant opens a
@@ -369,6 +370,35 @@ export function registerGroupRooms(io) {
     // Moderator actions — each re-checks the *acting* socket's moderator
     // status fresh (not a cached flag) so a demotion takes effect right away.
     // ---------------------------------------------------------------------
+
+    socket.on(
+      "group:report-user",
+      safeHandler("group:report-user", async ({ roomId, targetId, reason, details } = {}, ack) => {
+        const target = io.sockets.sockets.get(targetId);
+        if (!target || !socket.data.groupRooms?.has(roomId) || !target.data.groupRooms?.has(roomId)) {
+          ack?.({ ok: false, error: "That participant is no longer in this room." });
+          return;
+        }
+        if (!allowAction(`group-report:${socket.data.ipHash}:${socket.data.fingerprint}`, { limit: 5, windowMs: 60 * 60 * 1000 })) {
+          ack?.({ ok: false, error: "Too many reports. Please try again later." });
+          return;
+        }
+        const room = await Room.findById(roomId).select("name").lean();
+        await fileReport({
+          reporterFingerprint: socket.data.fingerprint,
+          reporterIpHash: socket.data.ipHash,
+          reporterDisplayName: socket.data.displayName,
+          reportedFingerprint: target.data.fingerprint,
+          reportedDisplayName: target.data.displayName,
+          reportedIpHash: target.data.ipHash,
+          reportedRoomName: room?.name,
+          roomId,
+          reason: typeof reason === "string" ? reason.slice(0, 80) : "other",
+          details: typeof details === "string" ? details.slice(0, 1000) : "",
+        });
+        ack?.({ ok: true });
+      })
+    );
 
     socket.on(
       "group:mod-promote",

@@ -4,6 +4,7 @@ export function recordAudit({ action, actor, targetId = "", roomId = "", metadat
   return AuditLog.create({
     action,
     actorId: actor?.accountId || "unknown",
+    actorName: actor?.displayName || "",
     actorRole: actor?.role || "admin",
     targetId: String(targetId || ""),
     roomId: String(roomId || ""),

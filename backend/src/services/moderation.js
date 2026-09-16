@@ -50,13 +50,15 @@ export async function moderateFrame(_frameBuffer) {
   return { flagged: false, categories: [] };
 }
 
-export async function fileReport({ reporterFingerprint, reportedFingerprint, reportedDisplayName, reportedIpHash, reportedRoomName, roomId, reason, details }) {
+export async function fileReport({ reporterFingerprint, reporterIpHash, reporterDisplayName, reportedFingerprint, reportedDisplayName, reportedIpHash, reportedRoomName, roomId, reason, details }) {
   const severity = ["minor_endangerment", "nudity_sexual_content"].includes(reason)
     ? "critical"
     : "medium";
 
   const report = await Report.create({
-    reporterFingerprint,
+		reporterFingerprint,
+		reporterIpHash: reporterIpHash || "",
+		reporterDisplayName: String(reporterDisplayName || "").slice(0, 30),
 		reportedFingerprint,
 		reportedDisplayName: String(reportedDisplayName || "").slice(0, 30),
 		reportedIpHash: reportedIpHash || "",
@@ -77,21 +79,7 @@ export async function fileReport({ reporterFingerprint, reportedFingerprint, rep
 }
 
 export async function autoBanOnRepeatedReports(reportedFingerprint, ipHash) {
-  const recentCritical = await Report.countDocuments({
-    reportedFingerprint,
-    severity: "critical",
-    createdAt: { $gt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-  }).catch(() => 0);
-
-  if (recentCritical >= 2) {
-    await BannedUser.create({
-      fingerprint: reportedFingerprint,
-      ipHash,
-      reason: `Auto-ban: ${recentCritical} critical reports in 24h`,
-			createdBy: "system",
-      expiresAt: null,
-    }).catch(() => {});
-    return true;
-  }
+  // Reports are evidence, not an automatic ban trigger. An authorized admin
+  // must approve a report through /admin/reports/:id/approve-ban.
   return false;
 }

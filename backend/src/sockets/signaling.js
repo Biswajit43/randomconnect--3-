@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { matchmaker } from "../services/matchmaker.js";
-import { isBanned, hashIp, fileReport, autoBanOnRepeatedReports } from "../services/moderation.js";
+import { isBanned, hashIp, fileReport } from "../services/moderation.js";
 import { adminSessionFromToken, deviceTokenFromCookieHeader, hashDeviceToken, staffAccountFromSession } from "../services/adminAuth.js";
 import AdminDevice from "../models/AdminDevice.js";
 import { allowAction } from "../services/abuse.js";
@@ -186,6 +186,8 @@ export function registerSignaling(io) {
         const room = await Room.findById(roomId).select("name").lean();
         await fileReport({
           reporterFingerprint: socket.data.fingerprint,
+          reporterIpHash: socket.data.ipHash,
+          reporterDisplayName: socket.data.displayName,
           reportedFingerprint: partner.data.fingerprint,
           reportedDisplayName: partner.data.displayName,
           reportedIpHash: partner.data.ipHash,
@@ -194,7 +196,6 @@ export function registerSignaling(io) {
           reason: typeof reason === "string" ? reason.slice(0, 80) : "other",
           details: typeof details === "string" ? details.slice(0, 1000) : "",
         });
-        await autoBanOnRepeatedReports(partner.data.fingerprint, partner.data.ipHash);
         acknowledge?.({ ok: true });
         leaveRoom(io, socket, { reason: "reported" });
       } catch (err) {

@@ -14,6 +14,7 @@ export default function Admin() {
   const [usage, setUsage] = useState({ connectedUsers: 0, activeUsers: 0, activeRooms: 0, waitingUsers: 0 });
   const [bans, setBans] = useState([]);
   const [audit, setAudit] = useState([]);
+  const [auditExpanded, setAuditExpanded] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -123,12 +124,12 @@ export default function Admin() {
     } catch (requestError) { setError(requestError.message); }
   }
 
-  async function banReported(report) {
-    const duration = window.prompt("Ban duration: 5m, 10m, 30m, 1h, or permanent", "30m");
-    if (!duration || !["5m", "10m", "30m", "1h", "permanent"].includes(duration)) return;
+  async function approveReportBan(report, duration) {
+    if (!window.confirm(`Approve this report and ban ${report.reportedDisplayName || "this user"} for ${duration === "permanent" ? "permanently" : duration}?`)) return;
     try {
-      const ban = await api.createAdminBan({ fingerprint: report.reportedFingerprint, duration, reason: `Report: ${report.reason}` });
-      setBans((current) => [ban, ...current]);
+      const result = await api.approveAdminReportBan(report._id, duration);
+      setBans((current) => [result.ban, ...current]);
+      setReports((current) => current.filter((item) => item._id !== report._id));
     } catch (requestError) { setError(requestError.message); }
   }
 
@@ -226,10 +227,13 @@ export default function Admin() {
               </div>
               {report.details && <p className="mt-3 text-sm text-white/80">{report.details}</p>}
               <p className="mt-3 font-mono text-[11px] text-mist/70">Reported user: {report.reportedDisplayName || "Unknown"} · ID {report.reportedFingerprint} · {report.reportCount} report(s)</p>
-              <p className="mt-1 text-xs text-mist">Signals: {report.signals?.ipMatchCount || 0} IP matches · {report.signals?.repeatedJoins || 0} repeated joins · {report.signals?.deviceSessionMatch ? "known device/session" : "new device/session"}</p>
+              <p className="mt-1 text-xs text-mist">Signals: {report.signals?.ipMatchCount || 0} IP matches · {report.signals?.repeatedJoins || 0} repeated joins · {report.uniqueReporterCount || 1} reporter IDs · {report.uniqueReporterIpCount || 0} reporter IPs</p>
               {status === "pending" && (
                 <div className="mt-4 flex gap-2">
-                  <button onClick={() => banReported(report)} className="rounded-lg bg-coral px-3 py-2 text-xs font-semibold text-white">Ban user</button>
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-coral/20 bg-coral/5 p-1.5">
+                    <span className="px-1 text-[11px] font-mono text-coral">Approve + ban:</span>
+                    {["2m", "5m", "10m", "30m", "1h", "permanent"].map((duration) => <button key={duration} onClick={() => approveReportBan(report, duration)} className="rounded-md bg-coral/15 px-2 py-1.5 text-[11px] font-semibold text-coral hover:bg-coral/25">{duration}</button>)}
+                  </div>
                   <button onClick={() => updateReport(report._id, "reviewed")} className="rounded-lg bg-signal px-3 py-2 text-xs font-semibold text-ink">Mark reviewed</button>
                   <button onClick={() => updateReport(report._id, "dismissed")} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-mist hover:text-white">Dismiss</button>
                 </div>
@@ -248,7 +252,11 @@ export default function Admin() {
           </div>
           <div>
             <h2 className="font-display text-lg text-white">Audit log</h2>
-            <div className="mt-3 max-h-52 space-y-2 overflow-auto">{audit.map((entry) => <p key={entry._id} className="text-xs text-mist"><span className="text-white">{entry.action}</span> · {entry.actorId} · {new Date(entry.createdAt).toLocaleString()}</p>)}</div>
+            <div className={`${auditExpanded ? "max-h-96" : "max-h-52"} mt-3 space-y-2 overflow-y-auto rounded-lg border border-white/5 bg-black/10 p-3`}>
+              {audit.length === 0 && <p className="text-xs text-mist">No admin actions recorded yet.</p>}
+              {audit.map((entry) => <p key={entry._id} className="text-xs text-mist"><span className="text-white">{entry.action}</span> · {entry.actorName || entry.actorId} · {new Date(entry.createdAt).toLocaleString()}</p>)}
+            </div>
+            {audit.length > 6 && <button onClick={() => setAuditExpanded((current) => !current)} className="mt-2 text-xs text-signal2 hover:text-white">{auditExpanded ? "Show less" : "Scroll / show more audit logs"}</button>}
           </div>
         </section>
       </section>

@@ -5,6 +5,7 @@ import { api } from "../lib/api.js";
 import { useGroupWebRTC } from "../hooks/useGroupWebRTC.js";
 import VideoTile from "../components/VideoTile.jsx";
 import { MusicPlayerBoundary } from "../components/MusicPlayer.jsx";
+import ReportModal from "../components/ReportModal.jsx";
 
 export default function GroupRoom() {
   const { roomId } = useParams();
@@ -24,6 +25,7 @@ export default function GroupRoom() {
   const [banner, setBanner] = useState(null);
   const [forceMuted, setForceMuted] = useState(false);
   const [music, setMusic] = useState(null);
+  const [reportTargetId, setReportTargetId] = useState(null);
   const [socketReady, setSocketReady] = useState(socket.connected);
   const chatScrollRef = useRef(null);
   const displayName = useRef(getDisplayName() || `Guest-${getFingerprint().slice(0, 4)}`);
@@ -222,6 +224,17 @@ export default function GroupRoom() {
       setDraft("");
     });
   }
+  function submitGroupReport(report) {
+    if (!reportTargetId) return;
+    socket.emit("group:report-user", { roomId, targetId: reportTargetId, ...report }, (result) => {
+      if (!result?.ok) {
+        setBanner(result?.error || "Report could not be submitted.");
+        return;
+      }
+      setReportTargetId(null);
+      setBanner("Report submitted. Thank you for helping keep the room safe.");
+    });
+  }
   const mod = (event, targetId) => socket.emit(event, { roomId, targetId });
 
   if (phase === "blocked") return <EmptyState title="Can't join this room" text="Mic access was denied, or this device is currently restricted." action="Back to rooms" onAction={leave} />;
@@ -267,6 +280,7 @@ export default function GroupRoom() {
             {visiblePeers.map((peer) => (
               <div key={peer.socketId} className="relative z-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[60]">
                 <VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName || "Guest"} role={peer.role || "user"} />
+                <button onClick={() => setReportTargetId(peer.socketId)} className="absolute bottom-2 left-2 rounded-md border border-coral/30 bg-black/70 px-2 py-1 text-[11px] font-medium text-coral backdrop-blur hover:bg-coral/20">Report</button>
                 {mutedPeers.has(peer.socketId) && <span className="absolute top-2 left-2 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}
                 {isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator || (role === "admin" && peer.role === "user")) && (
                   <ModMenu isDeveloper={role === "developer"} isAdmin={role === "admin"} isModerator={peer.isModerator} targetRole={peer.role || "user"} isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} onDemote={() => mod("group:mod-demote", peer.socketId)} />
@@ -321,6 +335,7 @@ export default function GroupRoom() {
           </div>
         </aside>
       </div>
+      <ReportModal open={Boolean(reportTargetId)} onClose={() => setReportTargetId(null)} onSubmit={submitGroupReport} />
     </div>
   );
 }

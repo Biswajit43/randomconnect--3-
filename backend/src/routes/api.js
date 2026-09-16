@@ -20,6 +20,7 @@ import {
   isAdminCookieHeader,
   signAdminSession,
   staffAccountFromPassword,
+  staffAccountFromSession,
 } from "../services/adminAuth.js";
 
 const MAX_ROOMS_PER_USER = 2;
@@ -94,6 +95,8 @@ async function requireAdmin(req, res, next) {
     return res.status(503).json({ error: "Admin authentication is temporarily unavailable" });
   }
   req.adminSession = getAdminSessionFromCookieHeader(req.headers.cookie || "");
+  req.adminAccount = staffAccountFromSession(req.adminSession) || { id: req.adminSession?.accountId, role: req.adminSession?.role, displayName: "Admin" };
+  req.adminSession = { ...req.adminSession, displayName: req.adminAccount.displayName };
   await touchAdminDevice(req.headers.cookie || "");
   next();
 }
@@ -401,16 +404,43 @@ router.get(
     const reports = await Report.find({ status }).sort({ severity: -1, createdAt: -1 }).limit(100).lean();
     const counts = await Report.aggregate([
       { $match: { status: { $in: ["pending", "reviewed"] } } },
-      { $group: { _id: "$reportedFingerprint", reportCount: { $sum: 1 } } },
+      { $group: { _id: "$reportedFingerprint", reportCount: { $sum: 1 }, reporters: { $addToSet: "$reporterFingerprint" }, reporterIps: { $addToSet: "$reporterIpHash" } } },
     ]);
-    const countByFingerprint = new Map(counts.map((item) => [item._id, item.reportCount]));
+    const countByFingerprint = new Map(counts.map((item) => [item._id, item]));
     res.json(reports.map((report) => ({
       ...report,
-      reportCount: countByFingerprint.get(report.reportedFingerprint) || 1,
+      reportCount: countByFingerprint.get(report.reportedFingerprint)?.reportCount || 1,
+      uniqueReporterCount: countByFingerprint.get(report.reportedFingerprint)?.reporters?.filter(Boolean).length || 1,
+      uniqueReporterIpCount: countByFingerprint.get(report.reportedFingerprint)?.reporterIps?.filter(Boolean).length || 0,
       signals: abuseSignals(report.reportedFingerprint, report.reportedIpHash),
     })));
   })
 );
+
+router.post("/admin/reports/:id/approve-ban", requireAdmin, asyncRoute(async (req, res) => {
+  const { duration } = req.body || {};
+  const allowedDurations = { "2m": 2, "5m": 5, "10m": 10, "30m": 30, "1h": 60, permanent: null };
+  if (!Object.hasOwn(allowedDurations, duration)) return res.status(400).json({ error: "Invalid ban duration" });
+  const report = await Report.findById(req.params.id);
+  if (!report) return res.status(404).json({ error: "Report not found" });
+  if (report.status !== "pending") return res.status(409).json({ error: "This report has already been reviewed" });
+  const minutes = allowedDurations[duration];
+  const ban = await BannedUser.create({
+    fingerprint: report.reportedFingerprint,
+    ipHash: report.reportedIpHash || undefined,
+    reason: `Approved report: ${report.reason}`,
+    createdBy: req.adminSession?.accountId || "admin",
+    expiresAt: minutes === null ? null : new Date(Date.now() + minutes * 60 * 1000),
+    reportIds: [report._id],
+  });
+  report.status = "reviewed";
+  report.reviewedAt = new Date();
+  report.reviewedBy = req.adminSession?.accountId || "admin";
+  await report.save();
+  const disconnected = disconnectMatching({ fingerprint: report.reportedFingerprint });
+  await recordAudit({ action: "report.approved_and_banned", actor: req.adminSession, targetId: report.reportedFingerprint, roomId: report.roomId, metadata: { reportId: report._id.toString(), duration, disconnected } });
+  res.json({ ok: true, ban, disconnected, report });
+}));
 
 router.patch(
   "/admin/reports/:id",

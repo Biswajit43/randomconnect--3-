@@ -4,6 +4,7 @@ const auditLogSchema = new mongoose.Schema(
   {
     action: { type: String, required: true, index: true },
     actorId: { type: String, required: true },
+    actorName: { type: String, default: "" },
     actorRole: { type: String, required: true },
     targetId: { type: String, default: "" },
     roomId: { type: String, default: "" },
