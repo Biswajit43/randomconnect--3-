@@ -6,6 +6,7 @@ import { useGroupWebRTC } from "../hooks/useGroupWebRTC.js";
 import VideoTile from "../components/VideoTile.jsx";
 import { MusicPlayerBoundary } from "../components/MusicPlayer.jsx";
 import ReportModal from "../components/ReportModal.jsx";
+import QuickGamePanel from "../components/QuickGamePanel.jsx";
 
 const CONVERSATION_SPARKS = [
   "What is something you could talk about for hours?",
@@ -36,6 +37,9 @@ export default function GroupRoom() {
   const [blockedReason, setBlockedReason] = useState(null);
   const [forceMuted, setForceMuted] = useState(false);
   const [music, setMusic] = useState(null);
+  const [game, setGame] = useState(null);
+  const [gameError, setGameError] = useState("");
+  const [drawWord, setDrawWord] = useState("");
   const [reportTargetId, setReportTargetId] = useState(null);
   const [socketReady, setSocketReady] = useState(socket.connected);
   const chatScrollRef = useRef(null);
@@ -146,6 +150,10 @@ export default function GroupRoom() {
     }
     function onMusicError({ message }) { showBanner(message); }
     function onWaitingList({ waiting }) { setWaitingList(Array.isArray(waiting) ? waiting : []); }
+    function onGameState(next) { setGame(next && typeof next === "object" ? next : null); if (!next) setDrawWord(""); setGameError(""); }
+    function onGameError({ message }) { setGameError(message || "The game is temporarily unavailable."); }
+    function onGameDraw({ gameId, stroke }) { setGame((current) => current?.gameId === gameId ? { ...current, drawStrokes: [...(current.drawStrokes || []), stroke].slice(-500) } : current); }
+    function onDrawWord({ word }) { setDrawWord(word || ""); }
     function identify() {
       if (identifySent.current) return;
       identifySent.current = true;
@@ -170,10 +178,11 @@ export default function GroupRoom() {
     socket.on("group:promoted", onPromoted); socket.on("group:demoted", onDemoted); socket.on("group:peer-muted", onPeerMuted);
     socket.on("group:peer-unmuted", onPeerUnmuted); socket.on("group:music-state", onMusicState);
     socket.on("group:music-error", onMusicError); socket.on("group:waiting-list", onWaitingList);
+    socket.on("group:game-state", onGameState); socket.on("group:game-error", onGameError); socket.on("group:game-draw", onGameDraw); socket.on("group:draw-word", onDrawWord);
     if (socket.connected) identify();
 
     return () => {
-      ["connect", "disconnect", "blocked", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:demoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list"].forEach((event) => socket.off(event));
+      ["connect", "disconnect", "blocked", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:demoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list", "group:game-state", "group:game-error", "group:game-draw", "group:draw-word"].forEach((event) => socket.off(event));
     };
   }, [closeAll, connectToExistingPeer, localStream, navigate, roomId]);
 
@@ -253,6 +262,27 @@ export default function GroupRoom() {
       }
       setDraft("");
     });
+  }
+  function startGame(mode = "pulse") {
+    setGameError("");
+    socket.emit("group:game-start", { roomId, mode }, (result) => { if (!result?.ok) setGameError(result?.error || "The game could not start."); });
+  }
+  function tapGame() {
+    if (!game) return;
+    socket.emit("group:game-tap", { roomId, gameId: game.gameId, roundToken: game.roundToken });
+  }
+  function answerGame(answer, questionToken) {
+    if (!game) return;
+    socket.emit("group:game-answer", { roomId, gameId: game.gameId, questionToken, answer }, (result) => {
+      if (!result?.ok) setGameError("That answer was too late. Watch for the next round.");
+    });
+  }
+  function drawGame(stroke) {
+    if (!game) return;
+    socket.emit("group:game-draw", { roomId, gameId: game.gameId, stroke });
+  }
+  function stopGame() {
+    socket.emit("group:game-stop", { roomId }, (result) => { if (!result?.ok) setGameError(result?.error || "The game could not stop."); });
   }
   function addConversationSpark() {
     setDraft(`Spark: ${CONVERSATION_SPARKS[sparkIndex]}`);
@@ -345,6 +375,7 @@ export default function GroupRoom() {
           </div>
         </div>
         <aside className="flex flex-col gap-4 min-h-0 lg:min-h-0">
+          <QuickGamePanel game={game} isModerator={isModerator} onStart={startGame} onTap={tapGame} onAnswer={answerGame} onDraw={drawGame} isDrawer={game?.drawerId === socket.id} drawWord={drawWord} onStop={stopGame} error={gameError} />
           {isModerator && visibleWaiting.length > 0 && (
             <div className="bg-panel/85 rounded-2xl border border-violet/30 overflow-hidden surface-lift shrink-0">
               <div className="px-4 py-3 border-b border-white/5 font-display text-sm text-violet">Waiting room · {visibleWaiting.length}</div>

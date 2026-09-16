@@ -4,6 +4,7 @@ import { searchTrack, parseYouTubeId, getYouTubeMetadata } from "../services/mus
 import { allowAction } from "../services/abuse.js";
 import { noteJoin } from "../services/presence.js";
 import { fileReport } from "../services/moderation.js";
+import { v4 as uuid } from "uuid";
 
 /**
  * Group rooms use a full-mesh WebRTC topology: every participant opens a
@@ -93,6 +94,238 @@ function getMusicPosition(music, now) {
   return Math.max(0, (now - music.startedAt) / 1000);
 }
 
+const roomGames = new Map();
+const GAME_ROUNDS = 5;
+const DRAW_WORDS = ["rocket", "pizza", "dragon", "guitar", "volcano", "rainbow", "hamburger", "snowman", "camera", " pirate", "sunflower", "rollercoaster"];
+
+function publicGame(game) {
+  if (!game) return null;
+  const players = Object.values(game.players)
+    .sort((a, b) => b.score - a.score || b.streak - a.streak || a.displayName.localeCompare(b.displayName))
+    .map((player) => ({ socketId: player.socketId, displayName: player.displayName, score: player.score, streak: player.streak }));
+  const winner = players.find((player) => player.socketId === game.winnerId);
+  return {
+    gameId: game.gameId,
+    title: game.type === "trivia" ? "Trivia Rush" : "Pulse Clash",
+    type: game.type,
+    status: game.status,
+    round: game.round,
+    totalRounds: game.totalRounds,
+    roundToken: game.roundToken,
+    countdownEndsAt: game.countdownEndsAt || null,
+    liveAt: game.liveAt || null,
+    roundEndsAt: game.roundEndsAt || null,
+    winnerName: winner?.displayName || null,
+    finalWinnerName: game.finalWinnerName || null,
+    question: game.type === "trivia" ? game.question || null : null,
+    answers: game.type === "trivia" ? game.answers || [] : [],
+    questionToken: game.type === "trivia" ? game.questionToken || null : null,
+    answeredCount: game.type === "trivia" ? game.answered?.size || 0 : 0,
+    correctAnswer: game.status === "result" || game.status === "finished" ? game.correctAnswer || null : null,
+    roundWinnerName: game.roundWinnerName || null,
+    drawerId: game.type === "draw" ? game.drawerId || null : null,
+    drawerName: game.type === "draw" ? game.drawerName || null : null,
+    maskedWord: game.type === "draw" ? game.maskedWord || null : null,
+    drawStrokes: game.type === "draw" ? game.drawStrokes || [] : [],
+    players,
+  };
+}
+
+function emitGame(io, roomId) {
+  io.to(roomId).emit("group:game-state", publicGame(roomGames.get(roomId)));
+}
+
+function clearGameTimer(game) {
+  if (game?.timer) clearTimeout(game.timer);
+  if (game) game.timer = null;
+}
+
+function finishGame(io, roomId) {
+  const game = roomGames.get(roomId);
+  if (!game) return;
+  clearGameTimer(game);
+  game.status = "finished";
+  const winner = Object.values(game.players).sort((a, b) => b.score - a.score || b.streak - a.streak)[0];
+  game.finalWinnerName = winner?.score ? winner.displayName : null;
+  emitGame(io, roomId);
+  game.timer = setTimeout(() => {
+    if (roomGames.get(roomId) === game) roomGames.delete(roomId);
+  }, 8000);
+}
+
+function finishRound(io, roomId, winnerId = null) {
+  const game = roomGames.get(roomId);
+  if (!game || game.status !== "live") return;
+  clearGameTimer(game);
+  game.status = "result";
+  game.winnerId = winnerId;
+  Object.values(game.players).forEach((player) => {
+    if (winnerId && player.socketId === winnerId) {
+      player.score += 1;
+      player.streak += 1;
+    } else if (!winnerId || player.socketId !== winnerId) {
+      player.streak = 0;
+    }
+  });
+  emitGame(io, roomId);
+  game.timer = setTimeout(() => {
+    if (roomGames.get(roomId) !== game) return;
+    if (game.round >= game.totalRounds) finishGame(io, roomId);
+    else startGameRound(io, roomId);
+  }, 2200);
+}
+
+function decodeTriviaValue(value) {
+  try { return decodeURIComponent(value); } catch { return String(value || ""); }
+}
+
+function shuffle(values) {
+  return [...values].sort(() => Math.random() - 0.5);
+}
+
+async function startTriviaRound(io, roomId) {
+  const game = roomGames.get(roomId);
+  if (!game) return;
+  clearGameTimer(game);
+  try {
+    const response = await fetch("https://opentdb.com/api.php?amount=1&type=multiple&encode=url3986");
+    if (!response.ok) throw new Error(`Open Trivia DB returned ${response.status}`);
+    const payload = await response.json();
+    const result = payload.results?.[0];
+    if (!result) throw new Error("No trivia question returned");
+    const correctAnswer = decodeTriviaValue(result.correct_answer);
+    game.round += 1;
+    game.status = "question";
+    game.questionToken = uuid();
+    game.question = decodeTriviaValue(result.question);
+    game.answers = shuffle([correctAnswer, ...(result.incorrect_answers || []).map(decodeTriviaValue)]);
+    game.correctAnswer = correctAnswer;
+    game.answered = new Set();
+    game.roundWinnerName = null;
+    game.roundEndsAt = Date.now() + 15000;
+    emitGame(io, roomId);
+    game.timer = setTimeout(() => finishTriviaRound(io, roomId), 15000);
+  } catch (error) {
+    console.error("[groupRooms] trivia question failed:", error.message);
+    clearGameTimer(game);
+    roomGames.delete(roomId);
+    io.to(roomId).emit("group:game-state", null);
+    io.to(roomId).emit("group:game-error", { message: "Trivia is temporarily unavailable. Pulse Clash is still ready to play." });
+  }
+}
+
+function finishTriviaRound(io, roomId) {
+  const game = roomGames.get(roomId);
+  if (!game || game.type !== "trivia" || game.status !== "question") return;
+  clearGameTimer(game);
+  game.status = "result";
+  emitGame(io, roomId);
+  game.timer = setTimeout(() => {
+    if (roomGames.get(roomId) !== game) return;
+    if (game.round >= game.totalRounds) finishGame(io, roomId);
+    else startTriviaRound(io, roomId);
+  }, 2400);
+}
+
+function finishDrawRound(io, roomId) {
+  const game = roomGames.get(roomId);
+  if (!game || game.type !== "draw" || game.status !== "drawing") return;
+  clearGameTimer(game);
+  game.status = "result";
+  game.correctAnswer = game.word;
+  emitGame(io, roomId);
+  game.timer = setTimeout(() => {
+    if (roomGames.get(roomId) !== game) return;
+    if (game.round >= game.totalRounds) finishGame(io, roomId);
+    else startGameRound(io, roomId);
+  }, 3000);
+}
+
+function startDrawRound(io, roomId) {
+  const game = roomGames.get(roomId);
+  if (!game) return;
+  clearGameTimer(game);
+  const players = Object.values(game.players);
+  if (!players.length) return;
+  const drawer = players[(game.round) % players.length];
+  game.round += 1;
+  game.status = "drawing";
+  game.drawerId = drawer.socketId;
+  game.drawerName = drawer.displayName;
+  game.word = DRAW_WORDS[Math.floor(Math.random() * DRAW_WORDS.length)].trim();
+  game.maskedWord = game.word.replace(/[a-z]/gi, "_ ").trim();
+  game.drawStrokes = [];
+  game.roundWinnerName = null;
+  game.answered = new Set();
+  game.roundEndsAt = Date.now() + 45000;
+  emitGame(io, roomId);
+  io.to(game.drawerId).emit("group:draw-word", { gameId: game.gameId, word: game.word });
+  game.timer = setTimeout(() => finishDrawRound(io, roomId), 45000);
+}
+
+function startGameRound(io, roomId) {
+  const game = roomGames.get(roomId);
+  if (!game) return;
+  if (game.type === "draw") {
+    startDrawRound(io, roomId);
+    return;
+  }
+  if (game.type === "trivia") {
+    startTriviaRound(io, roomId);
+    return;
+  }
+  clearGameTimer(game);
+  game.round += 1;
+  game.status = "countdown";
+  game.roundToken = uuid();
+  game.tapped = new Set();
+  game.winnerId = null;
+  game.countdownEndsAt = Date.now() + 2600;
+  game.liveAt = null;
+  game.roundEndsAt = null;
+  emitGame(io, roomId);
+  game.timer = setTimeout(() => {
+    if (roomGames.get(roomId) !== game || game.status !== "countdown") return;
+    game.status = "live";
+    game.liveAt = Date.now();
+    game.roundEndsAt = game.liveAt + 6500;
+    emitGame(io, roomId);
+    game.timer = setTimeout(() => finishRound(io, roomId), 6500);
+  }, 2600);
+}
+
+function startRoomGame(io, roomId, type = "pulse") {
+  const players = [...(io.sockets.adapter.rooms.get(roomId) || [])]
+    .map((socketId) => io.sockets.sockets.get(socketId))
+    .filter((peer) => peer?.data?.groupRooms?.has(roomId));
+  const game = {
+    gameId: uuid(),
+    type: ["trivia", "draw"].includes(type) ? type : "pulse",
+    status: "countdown",
+    round: 0,
+    totalRounds: GAME_ROUNDS,
+    players: Object.fromEntries(players.map((peer) => [peer.id, { socketId: peer.id, displayName: peer.data.displayName || "Guest", score: 0, streak: 0 }])),
+    tapped: new Set(),
+    drawStrokes: [],
+    timer: null,
+  };
+  roomGames.set(roomId, game);
+  startGameRound(io, roomId);
+}
+
+function removeGamePlayer(io, roomId, socketId) {
+  const game = roomGames.get(roomId);
+  if (!game) return;
+  delete game.players[socketId];
+  game.tapped?.delete(socketId);
+  if (Object.keys(game.players).length === 0) {
+    clearGameTimer(game);
+    roomGames.delete(roomId);
+    return;
+  }
+  emitGame(io, roomId);
+}
+
 export function registerGroupRooms(io) {
   io.on("connection", (socket) => {
     socket.on(
@@ -128,6 +361,11 @@ export function registerGroupRooms(io) {
         socket.data.isModeratorByRoom = socket.data.isModeratorByRoom || {};
         socket.data.isModeratorByRoom[roomId] = isModerator;
 
+        const activeGame = roomGames.get(roomId);
+        if (activeGame) {
+          activeGame.players[socket.id] ||= { socketId: socket.id, displayName: socket.data.displayName || "Guest", score: 0, streak: 0 };
+        }
+
         const existingPeers = existingPeerIds.map((id) => {
           const p = io.sockets.sockets.get(id);
           const peerFingerprint = p?.data?.groupMeta?.fingerprint;
@@ -142,6 +380,7 @@ export function registerGroupRooms(io) {
         });
 
         socket.emit("group:joined", { roomId, existingPeers, isModerator, role: meta.role });
+        if (activeGame) socket.emit("group:game-state", publicGame(activeGame));
 
         // Late joiners hear whatever's already playing, roughly in sync —
         // the player seeks to (now - startedAt) on the client side.
@@ -169,6 +408,108 @@ export function registerGroupRooms(io) {
     );
 
     socket.on("group:leave", ({ roomId }) => leaveGroupRoom(io, socket, roomId));
+
+    socket.on("group:game-start", safeHandler("group:game-start", async ({ roomId, mode = "pulse" }, ack) => {
+      if (!(await canModerateRoom(socket, roomId))) {
+        ack?.({ ok: false, error: "Only a host or music moderator can start a game." });
+        return;
+      }
+      const participants = [...(io.sockets.adapter.rooms.get(roomId) || [])].filter((socketId) => io.sockets.sockets.get(socketId)?.data?.groupRooms?.has(roomId));
+      if (participants.length < 2) {
+        ack?.({ ok: false, error: "At least two people are needed to start a game." });
+        return;
+      }
+      const existing = roomGames.get(roomId);
+      if (existing && existing.status !== "finished") {
+        ack?.({ ok: false, error: "A game is already running." });
+        return;
+      }
+      if (existing) { clearGameTimer(existing); roomGames.delete(roomId); }
+      startRoomGame(io, roomId, mode);
+      ack?.({ ok: true });
+    }));
+
+    socket.on("group:game-tap", safeHandler("group:game-tap", async ({ roomId, gameId, roundToken }, ack) => {
+      const game = roomGames.get(roomId);
+      if (!game || game.gameId !== gameId || game.status !== "live" || game.roundToken !== roundToken || !socket.data.groupRooms?.has(roomId)) {
+        ack?.({ ok: false });
+        return;
+      }
+      if (!game.players[socket.id] || game.tapped.has(socket.id)) {
+        ack?.({ ok: false });
+        return;
+      }
+      game.tapped.add(socket.id);
+      finishRound(io, roomId, socket.id);
+      ack?.({ ok: true });
+    }));
+
+    socket.on("group:game-answer", safeHandler("group:game-answer", async ({ roomId, gameId, questionToken, answer }, ack) => {
+      const game = roomGames.get(roomId);
+      if (game?.type === "draw") {
+        if (game.gameId !== gameId || game.status !== "drawing" || !socket.data.groupRooms?.has(roomId) || socket.id === game.drawerId || game.answered.has(socket.id)) { ack?.({ ok: false }); return; }
+        const player = game.players[socket.id];
+        if (!player) { ack?.({ ok: false }); return; }
+        game.answered.add(socket.id);
+        const correct = String(answer || "").trim().toLowerCase() === game.word.toLowerCase();
+        if (correct) {
+          player.score += 1;
+          player.streak += 1;
+          game.roundWinnerName = player.displayName;
+          emitGame(io, roomId);
+          finishDrawRound(io, roomId);
+          ack?.({ ok: true, correct: true });
+        } else {
+          player.streak = 0;
+          ack?.({ ok: true, correct: false });
+        }
+        return;
+      }
+      if (!game || game.gameId !== gameId || game.type !== "trivia" || game.status !== "question" || game.questionToken !== questionToken || !socket.data.groupRooms?.has(roomId)) {
+        ack?.({ ok: false });
+        return;
+      }
+      const player = game.players[socket.id];
+      if (!player || game.answered.has(socket.id)) {
+        ack?.({ ok: false });
+        return;
+      }
+      game.answered.add(socket.id);
+      const isCorrect = answer === game.correctAnswer;
+      if (isCorrect) {
+        player.score += 1;
+        player.streak += 1;
+        if (!game.roundWinnerName) game.roundWinnerName = player.displayName;
+      } else {
+        player.streak = 0;
+      }
+      emitGame(io, roomId);
+      ack?.({ ok: true, correct: isCorrect });
+    }));
+
+    socket.on("group:game-draw", safeHandler("group:game-draw", async ({ roomId, gameId, stroke }, ack) => {
+      const game = roomGames.get(roomId);
+      if (!game || game.gameId !== gameId || game.type !== "draw" || game.status !== "drawing" || socket.id !== game.drawerId || !stroke || !Array.isArray(stroke.points) || stroke.points.length > 80) { ack?.({ ok: false }); return; }
+      const safeStroke = { color: String(stroke.color || "#ffffff").slice(0, 20), size: Math.min(Math.max(Number(stroke.size) || 4, 1), 24), points: stroke.points.slice(0, 80).map((point) => ({ x: Math.min(Math.max(Number(point.x) || 0, 0), 1), y: Math.min(Math.max(Number(point.y) || 0, 0), 1) })) };
+      game.drawStrokes.push(safeStroke);
+      if (game.drawStrokes.length > 500) game.drawStrokes.shift();
+      socket.to(roomId).emit("group:game-draw", { gameId, stroke: safeStroke });
+      ack?.({ ok: true });
+    }));
+
+    socket.on("group:game-stop", safeHandler("group:game-stop", async ({ roomId }, ack) => {
+      if (!(await canModerateRoom(socket, roomId))) {
+        ack?.({ ok: false, error: "Only a host or music moderator can stop a game." });
+        return;
+      }
+      const game = roomGames.get(roomId);
+      if (game) {
+        clearGameTimer(game);
+        roomGames.delete(roomId);
+        io.to(roomId).emit("group:game-state", null);
+      }
+      ack?.({ ok: true });
+    }));
 
     socket.on("group:music-pause", safeHandler("group:music-pause", async ({ roomId }, ack) => {
       if (!(await canControlMusic(socket, roomId))) {
@@ -478,6 +819,7 @@ export function registerGroupRooms(io) {
         if (!(await canActOnTarget(socket, roomId, target))) return;
 
         roomState.hold(roomId, targetId, target.data.groupMeta);
+        removeGamePlayer(io, roomId, targetId);
         target.leave(roomId);
         target.emit("group:moved-to-waiting", {});
         socket.to(roomId).emit("group:peer-left", { socketId: targetId });
@@ -514,6 +856,7 @@ export function registerGroupRooms(io) {
         if (!(await canActOnTarget(socket, roomId, target))) return;
 
         roomState.kick(roomId, targetId, target.data.fingerprint);
+        removeGamePlayer(io, roomId, targetId);
         target.leave(roomId);
         target.emit("group:removed", { reason: "You were removed from this room by a moderator." });
         socket.to(roomId).emit("group:peer-left", { socketId: targetId });
@@ -524,6 +867,7 @@ export function registerGroupRooms(io) {
     socket.on("disconnect", () => {
       const affectedRooms = roomState.leaveAll(socket.id);
       affectedRooms.forEach((roomId) => {
+        removeGamePlayer(io, roomId, socket.id);
         socket.to(roomId).emit("group:peer-left", { socketId: socket.id });
       });
     });
@@ -531,6 +875,7 @@ export function registerGroupRooms(io) {
 }
 
 function leaveGroupRoom(io, socket, roomId) {
+  removeGamePlayer(io, roomId, socket.id);
   roomState.leave(roomId, socket.id);
   socket.leave(roomId);
   socket.data.groupRooms?.delete(roomId);
