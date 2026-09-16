@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAnswer, onDraw, onStop, error, isDrawer, drawWord }) {
+export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAnswer, onDraw, onStop, error, isDrawer, drawWord, isBombTurn, canEndGame }) {
   const [mode, setMode] = useState("pulse");
   const [submittedToken, setSubmittedToken] = useState(null);
   const [guess, setGuess] = useState("");
@@ -10,7 +10,7 @@ export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAn
   const canvasRef = useRef(null);
   const activeStroke = useRef(null);
   const topPlayers = game?.players?.slice(0, 5) || [];
-  const trivia = game?.type === "trivia";
+  const bomb = game?.type === "bomb";
   const draw = game?.type === "draw";
   const live = game?.status === "live";
   const countdown = game?.status === "countdown";
@@ -81,20 +81,20 @@ export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAn
       </div>
 
       {!game && <div className="mt-4">
-        <p className="text-sm leading-relaxed text-white/80">Pick a fast reaction challenge, quiz, or Draw & Guess round.</p>
+        <p className="text-sm leading-relaxed text-white/80">Pick a fast reaction challenge, Draw & Guess, or Bomb Party.</p>
         {isModerator ? <>
-          <div className="mt-4 grid grid-cols-3 gap-2">
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
             <button onClick={() => setMode("pulse")} className={`rounded-xl border px-3 py-3 text-left transition ${mode === "pulse" ? "border-fuchsia-300/60 bg-fuchsia-400/15" : "border-white/10 bg-black/10 hover:bg-white/5"}`}>
               <span className="block text-sm font-semibold text-white">Pulse Clash</span><span className="mt-1 block text-[11px] text-mist">Tap first</span>
-            </button>
-            <button onClick={() => setMode("trivia")} className={`rounded-xl border px-3 py-3 text-left transition ${mode === "trivia" ? "border-violet/70 bg-violet/15" : "border-white/10 bg-black/10 hover:bg-white/5"}`}>
-              <span className="block text-sm font-semibold text-white">Trivia Rush</span><span className="mt-1 block text-[11px] text-mist">Answer fastest</span>
             </button>
             <button onClick={() => setMode("draw")} className={`rounded-xl border px-3 py-3 text-left transition ${mode === "draw" ? "border-signal/70 bg-signal/15" : "border-white/10 bg-black/10 hover:bg-white/5"}`}>
               <span className="block text-sm font-semibold text-white">Draw & Guess</span><span className="mt-1 block text-[11px] text-mist">Sketch the word</span>
             </button>
+            <button onClick={() => setMode("bomb")} className={`rounded-xl border px-3 py-3 text-left transition ${mode === "bomb" ? "border-amber-300/70 bg-amber-300/15" : "border-white/10 bg-black/10 hover:bg-white/5"}`}>
+              <span className="block text-sm font-semibold text-white">💣 Bomb Party</span><span className="mt-1 block text-[11px] text-mist">Word under pressure</span>
+            </button>
           </div>
-          <button onClick={() => onStart(mode)} className="mt-3 w-full rounded-xl bg-fuchsia-400 px-4 py-3 text-sm font-bold text-[#1b1022] shadow-lg shadow-fuchsia-500/15 hover:brightness-110">Start {mode === "trivia" ? "Trivia Rush" : mode === "draw" ? "Draw & Guess" : "Pulse Clash"}</button>
+          <button onClick={() => onStart(mode)} className="mt-3 w-full rounded-xl bg-fuchsia-400 px-4 py-3 text-sm font-bold text-[#1b1022] shadow-lg shadow-fuchsia-500/15 hover:brightness-110">Start {mode === "bomb" ? "Bomb Party" : mode === "draw" ? "Draw & Guess" : "Pulse Clash"}</button>
         </> : <p className="mt-4 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-center text-xs text-mist">Waiting for a host or Music Mod to start.</p>}
       </div>}
 
@@ -119,12 +119,15 @@ export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAn
             <canvas ref={canvasRef} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} className={`mt-3 h-48 w-full touch-none rounded-xl bg-[#101522] ${isDrawer ? "cursor-crosshair" : "cursor-default"}`} />
             {!isDrawer && <form onSubmit={submitGuess} className="mt-3 flex gap-2"><input value={guess} onChange={(event) => setGuess(event.target.value)} placeholder="Type your guess" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none" /><button className="rounded-lg bg-signal px-3 py-2 text-xs font-bold text-ink">Guess</button></form>}
           </>}
-          {result && trivia && <><p className="text-sm font-semibold text-white">Answer: <span className="text-violet">{game.correctAnswer}</span></p><p className="mt-1 text-xs text-mist">{game.roundWinnerName ? `${game.roundWinnerName} got it first.` : "No correct answer this round."} Next round loading…</p></>}
-          {result && !trivia && <><p className="text-sm font-semibold text-white">{game.winnerName ? `${game.winnerName} won the round!` : "No one caught it."}</p><p className="mt-1 text-xs text-mist">Next round loading…</p></>}
+          {bomb && game.status === "bombing" && <>
+            <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 p-3"><p className="text-3xl font-black tracking-[0.2em] text-amber-200">{game.bombSyllable?.toUpperCase()}</p><p className="mt-1 text-[11px] text-amber-100/80">Use these letters in a new word · {secondsLeft}s</p></div>
+            {isBombTurn ? <form onSubmit={submitGuess} className="mt-3 flex gap-2"><input autoFocus value={guess} onChange={(event) => setGuess(event.target.value)} placeholder="Type a word…" className="min-w-0 flex-1 rounded-lg border border-amber-300/20 bg-black/20 px-3 py-2 text-xs text-white outline-none" /><button className="rounded-lg bg-amber-300 px-3 py-2 text-xs font-bold text-ink">Pass 💥</button></form> : <p className="mt-3 rounded-lg bg-white/5 px-3 py-2 text-xs text-mist">{game.bombTurnName} has the bomb. Watch closely!</p>}
+          </>}
+          {result && <><p className="text-sm font-semibold text-white">{game.winnerId ? `${game.roundWinnerName || game.winnerName} scored!` : game.roundWinnerName || "Round over."}</p><p className="mt-1 text-xs text-mist">Next round loading…</p></>}
           {finished && <><p className="text-sm font-semibold text-white">{game.finalWinnerName ? `🏆 ${game.finalWinnerName} takes the crown!` : "That was a draw."}</p><button onClick={isModerator ? () => onStart(game.type || mode) : undefined} disabled={!isModerator} className="mt-3 rounded-lg bg-fuchsia-400 px-3 py-2 text-xs font-bold text-[#1b1022] disabled:opacity-40">{isModerator ? "Rematch" : "Game complete"}</button></>}
         </div>
         <div className="mt-3 space-y-1.5">{topPlayers.map((player, index) => <div key={player.socketId} className="flex items-center justify-between rounded-lg border border-white/5 bg-black/10 px-2.5 py-2 text-xs"><span className="truncate text-white/85"><span className="mr-2 text-mist">{index + 1}</span>{player.displayName}</span><span className="font-mono text-fuchsia-200">{player.score} pt{player.streak > 1 ? ` · ${player.streak}🔥` : ""}</span></div>)}</div>
-        <p className="mt-3 text-center text-[10px] text-mist/60">The game finishes automatically after the final round.</p>
+        {canEndGame ? <button onClick={onStop} className="mt-3 w-full rounded-lg border border-coral/30 px-3 py-2 text-xs font-semibold text-coral hover:bg-coral/10">End game (Admin)</button> : <p className="mt-3 text-center text-[10px] text-mist/60">The game finishes automatically after the final round.</p>}
       </>}
       {error && <p className="mt-2 text-xs text-coral">{error}</p>}
     </section>

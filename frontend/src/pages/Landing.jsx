@@ -36,7 +36,7 @@ export default function Landing() {
     const invite = params.get("invite");
     if (invite) setPremiumCode(invite);
     const recovery = params.get("recover");
-    if (recovery) setRecoveryCode(recovery);
+    if (recovery) { setRecoveryCode(recovery); setDetailsOpen(true); }
     if (!invite && !recovery && getDisplayName() && localStorage.getItem("rc_onboarded") === "1") {
       navigate(state?.returnTo || "/rooms", { replace: true });
     }
@@ -256,19 +256,29 @@ export default function Landing() {
                 />
 
                 <div className="mb-3 rounded-xl border border-violet/20 bg-violet/5 p-3">
-                  <label className="block text-[11px] font-mono uppercase tracking-wide text-violet">Premium access (optional)</label>
+                  <label className="block text-[11px] font-mono uppercase tracking-wide text-violet">✨ Redeem or recover Premium</label>
                   <input
                     value={premiumCode}
                     onChange={(e) => setPremiumCode(e.target.value.toUpperCase())}
                     placeholder="RC-PREMIUM-..."
-                    className="mt-2 w-full bg-ink/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:border-violet/60 transition"
+                    inputMode="text"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    enterKeyHint="done"
+                    onKeyDown={(e) => { if (e.key === "Enter") enter(); }}
+                    className="mt-2 w-full min-h-11 bg-ink/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:border-violet/60 transition"
                   />
                   <p className="mt-1.5 text-[11px] text-mist">Invite access lasts 30 days and never opens the admin panel.</p>
                   <input
                     value={recoveryCode}
                     onChange={(e) => setRecoveryCode(e.target.value.toUpperCase())}
                     placeholder="Recovery code after clearing browser data"
-                    className="mt-2 w-full bg-ink/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:border-signal/60 transition"
+                    inputMode="text"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    enterKeyHint="done"
+                    onKeyDown={(e) => { if (e.key === "Enter") enter(); }}
+                    className="mt-2 w-full min-h-11 bg-ink/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:border-signal/60 transition"
                   />
                   {premiumMessage && <p className={`mt-1.5 text-[11px] ${premiumMessage.startsWith("Premium activated") || premiumMessage.startsWith("Premium restored") ? "text-signal2" : "text-coral"}`}>{premiumMessage}</p>}
                 </div>

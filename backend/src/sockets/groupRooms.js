@@ -76,11 +76,12 @@ async function canActOnTarget(socket, roomId, target) {
   if (!target.data.groupRooms?.has(roomId)) return false;
   const actorRole = roleOf(socket);
   const targetRole = target.data.groupMeta.role || "user";
+  const targetIsRoomModerator = Boolean(target.data.isModeratorByRoom?.[roomId]);
   if (targetRole === "developer") return false;
-  if (actorRole === "admin") return targetRole === "user";
+  if (actorRole === "admin") return ["user", "premium"].includes(targetRole);
   if (actorRole === "developer") return true;
-  if (actorRole === "premium") return targetRole === "user" && !target.data.isModeratorByRoom?.[roomId];
-  return targetRole === "user" && isModeratorOfRoom(roomId, socket.data.fingerprint);
+  if (actorRole === "premium") return targetRole === "user" && !targetIsRoomModerator;
+  return targetRole === "user" && !targetIsRoomModerator && isModeratorOfRoom(roomId, socket.data.fingerprint);
 }
 
 async function canControlMusic(socket, roomId) {
@@ -97,6 +98,7 @@ function getMusicPosition(music, now) {
 const roomGames = new Map();
 const GAME_ROUNDS = 5;
 const DRAW_WORDS = ["cat", "dog", "sun", "moon", "tree", "house", "car", "ball", "apple", "fish", "book", "phone", "star", "flower", "pizza", "rocket", "rainbow", "snowman"];
+const BOMB_PARTY_SYLLABLES = ["cat", "at", "an", "ar", "oo", "ee", "st", "ch", "in", "on", "ra", "sun"];
 
 function publicGame(game) {
   if (!game) return null;
@@ -106,7 +108,7 @@ function publicGame(game) {
   const winner = players.find((player) => player.socketId === game.winnerId);
   return {
     gameId: game.gameId,
-    title: game.type === "trivia" ? "Trivia Rush" : "Pulse Clash",
+    title: game.type === "bomb" ? "Bomb Party" : game.type === "draw" ? "Draw & Guess" : "Pulse Clash",
     type: game.type,
     status: game.status,
     round: game.round,
@@ -115,6 +117,7 @@ function publicGame(game) {
     countdownEndsAt: game.countdownEndsAt || null,
     liveAt: game.liveAt || null,
     roundEndsAt: game.roundEndsAt || null,
+    winnerId: game.winnerId || null,
     winnerName: winner?.displayName || null,
     finalWinnerName: game.finalWinnerName || null,
     question: game.type === "trivia" ? game.question || null : null,
@@ -127,6 +130,10 @@ function publicGame(game) {
     drawerName: game.type === "draw" ? game.drawerName || null : null,
     maskedWord: game.type === "draw" ? game.maskedWord || null : null,
     drawStrokes: game.type === "draw" ? game.drawStrokes || [] : [],
+    bombSyllable: game.type === "bomb" ? game.bombSyllable || null : null,
+    bombTurnId: game.type === "bomb" ? game.bombTurnId || null : null,
+    bombTurnName: game.type === "bomb" ? game.bombTurnName || null : null,
+    bombUsedCount: game.type === "bomb" ? game.bombUsed?.size || 0 : 0,
     players,
   };
 }
@@ -263,6 +270,40 @@ function startDrawRound(io, roomId) {
   game.timer = setTimeout(() => finishDrawRound(io, roomId), 45000);
 }
 
+function finishBombTurn(io, roomId, winnerId = null) {
+  const game = roomGames.get(roomId);
+  if (!game || game.type !== "bomb" || game.status !== "bombing") return;
+  clearGameTimer(game);
+  game.status = "result";
+  game.winnerId = winnerId;
+  if (!winnerId) game.roundWinnerName = `${game.bombTurnName} ran out of time`;
+  emitGame(io, roomId);
+  game.timer = setTimeout(() => {
+    if (roomGames.get(roomId) !== game) return;
+    if (game.round >= game.totalRounds) finishGame(io, roomId);
+    else startGameRound(io, roomId);
+  }, 1800);
+}
+
+function startBombTurn(io, roomId) {
+  const game = roomGames.get(roomId);
+  if (!game) return;
+  clearGameTimer(game);
+  const players = Object.values(game.players);
+  if (!players.length) return;
+  const player = players[game.round % players.length];
+  game.round += 1;
+  game.status = "bombing";
+  game.bombTurnId = player.socketId;
+  game.bombTurnName = player.displayName;
+  game.bombSyllable = BOMB_PARTY_SYLLABLES[Math.floor(Math.random() * BOMB_PARTY_SYLLABLES.length)];
+  game.bombUsed = new Set();
+  game.roundWinnerName = null;
+  game.roundEndsAt = Date.now() + 12000;
+  emitGame(io, roomId);
+  game.timer = setTimeout(() => finishBombTurn(io, roomId), 12000);
+}
+
 function startGameRound(io, roomId) {
   const game = roomGames.get(roomId);
   if (!game) return;
@@ -272,6 +313,10 @@ function startGameRound(io, roomId) {
   }
   if (game.type === "trivia") {
     startTriviaRound(io, roomId);
+    return;
+  }
+  if (game.type === "bomb") {
+    startBombTurn(io, roomId);
     return;
   }
   clearGameTimer(game);
@@ -300,10 +345,10 @@ function startRoomGame(io, roomId, type = "pulse") {
     .filter((peer) => peer?.data?.groupRooms?.has(roomId));
   const game = {
     gameId: uuid(),
-    type: ["trivia", "draw"].includes(type) ? type : "pulse",
+    type: ["draw", "bomb"].includes(type) ? type : "pulse",
     status: "countdown",
     round: 0,
-    totalRounds: GAME_ROUNDS,
+    totalRounds: type === "bomb" ? 8 : GAME_ROUNDS,
     players: Object.fromEntries(players.map((peer) => [peer.id, { socketId: peer.id, displayName: peer.data.displayName || "Guest", score: 0, streak: 0 }])),
     tapped: new Set(),
     drawStrokes: [],
@@ -332,6 +377,16 @@ export function registerGroupRooms(io) {
       "group:join",
       safeHandler("group:join", async ({ roomId, displayName }) => {
         if (!socket.data.fingerprint) return; // must identify() first (see signaling.js)
+
+        const room = await Room.findById(roomId).select("maxParticipants").lean();
+        if (!room) {
+          socket.emit("group:join-rejected", { reason: "room_not_found" });
+          return;
+        }
+        if (roomState.count(roomId) >= room.maxParticipants) {
+          socket.emit("group:join-rejected", { reason: "room_full", maxParticipants: room.maxParticipants });
+          return;
+        }
 
         if (roomState.isKicked(roomId, socket.data.fingerprint)) {
           socket.emit("group:removed", { reason: "You were removed from this room." });
@@ -465,6 +520,20 @@ export function registerGroupRooms(io) {
         }
         return;
       }
+      if (game?.type === "bomb") {
+        if (game.gameId !== gameId || game.status !== "bombing" || game.bombTurnId !== socket.id || !socket.data.groupRooms?.has(roomId)) { ack?.({ ok: false, error: "It is not your turn." }); return; }
+        const player = game.players[socket.id];
+        const word = String(answer || "").trim().toLowerCase();
+        if (!player || word.length < 2 || !word.includes(game.bombSyllable) || game.bombUsed.has(word)) { ack?.({ ok: false, error: "Use a new word containing the highlighted letters." }); return; }
+        game.bombUsed.add(word);
+        player.score += 1;
+        player.streak += 1;
+        game.roundWinnerName = player.displayName;
+        emitGame(io, roomId);
+        finishBombTurn(io, roomId, socket.id);
+        ack?.({ ok: true, correct: true });
+        return;
+      }
       if (!game || game.gameId !== gameId || game.type !== "trivia" || game.status !== "question" || game.questionToken !== questionToken || !socket.data.groupRooms?.has(roomId)) {
         ack?.({ ok: false });
         return;
@@ -497,8 +566,18 @@ export function registerGroupRooms(io) {
       ack?.({ ok: true });
     }));
 
-    socket.on("group:game-stop", safeHandler("group:game-stop", async (_payload, ack) => {
-      ack?.({ ok: false, error: "Games finish automatically after the final round." });
+    socket.on("group:game-stop", safeHandler("group:game-stop", async ({ roomId }, ack) => {
+      if (!socket.data.groupRooms?.has(roomId) || !["admin", "developer"].includes(roleOf(socket))) {
+        ack?.({ ok: false, error: "Only admins or developers can end a game." });
+        return;
+      }
+      const game = roomGames.get(roomId);
+      if (game) {
+        clearGameTimer(game);
+        roomGames.delete(roomId);
+        io.to(roomId).emit("group:game-state", null);
+      }
+      ack?.({ ok: true });
     }));
 
     socket.on("group:music-pause", safeHandler("group:music-pause", async ({ roomId }, ack) => {

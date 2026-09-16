@@ -171,11 +171,15 @@ export default function GroupRoom() {
       setPhase("blocked");
       if (reason === "server_error") showBanner("The room service could not verify your session. Please try again.");
     }
+    function onJoinRejected({ reason, maxParticipants }) {
+      setBlockedReason(reason === "room_full" ? `room_full:${maxParticipants || ""}` : reason);
+      setPhase("blocked");
+    }
     function onConnect() { setSocketReady(true); identify(); }
     function onDisconnect() { setSocketReady(false); }
 
     socket.on("connect", onConnect); socket.on("disconnect", onDisconnect);
-    socket.on("blocked", onBlocked);
+    socket.on("blocked", onBlocked); socket.on("group:join-rejected", onJoinRejected);
     socket.on("identified", onIdentified); socket.on("group:joined", onJoined);
     socket.on("group:peer-joined", onPeerJoined); socket.on("group:peer-left", onPeerLeft); socket.on("group:peer-promoted", onPeerPromoted); socket.on("group:peer-demoted", onPeerDemoted);
     socket.on("group:chat-message", onChatMessage); socket.on("group:force-mute", onForceMute);
@@ -188,7 +192,7 @@ export default function GroupRoom() {
     if (socket.connected) identify();
 
     return () => {
-      ["connect", "disconnect", "blocked", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:demoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list", "group:game-state", "group:game-error", "group:game-draw", "group:draw-word"].forEach((event) => socket.off(event));
+      ["connect", "disconnect", "blocked", "group:join-rejected", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:demoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list", "group:game-state", "group:game-error", "group:game-draw", "group:draw-word"].forEach((event) => socket.off(event));
     };
   }, [closeAll, connectToExistingPeer, localStream, navigate, roomId]);
 
@@ -280,7 +284,7 @@ export default function GroupRoom() {
   function answerGame(answer, questionToken) {
     if (!game) return;
     socket.emit("group:game-answer", { roomId, gameId: game.gameId, questionToken, answer }, (result) => {
-      if (!result?.ok) setGameError("That answer was too late. Watch for the next round.");
+      if (!result?.ok) setGameError(result?.error || "That answer was too late. Watch for the next round.");
     });
   }
   function drawGame(stroke) {
@@ -308,6 +312,7 @@ export default function GroupRoom() {
   const mod = (event, targetId) => socket.emit(event, { roomId, targetId });
 
   if (phase === "blocked") {
+    const roomFull = String(blockedReason || "").startsWith("room_full");
     const blockedText = blockedReason === "banned"
       ? "This device or session is currently restricted. If this seems wrong, ask an administrator to review the active ban."
       : blockedReason === "age_confirmation_required"
@@ -316,8 +321,10 @@ export default function GroupRoom() {
           ? "Too many connection attempts came from this network. Please wait a few minutes and try again. This is not a ban."
           : blockedReason === "server_error"
             ? "The room server could not verify your session. Please refresh and try again."
-            : "The room connection could not be verified. Please try again.";
-    return <EmptyState title={blockedReason === "banned" ? "Access restricted" : "Can't join this room"} text={blockedText} action="Back to rooms" onAction={leave} />;
+            : roomFull
+              ? `This room has reached its limit${String(blockedReason).split(":")[1] ? ` of ${String(blockedReason).split(":")[1]} people` : ""}. Try another room or come back later.`
+              : "The room connection could not be verified. Please try again.";
+    return <EmptyState title={blockedReason === "banned" ? "Access restricted" : roomFull ? "Room is full" : "Can't join this room"} text={blockedText} action="Back to rooms" onAction={leave} />;
   }
   if (phase === "waiting") return <EmptyState title="You're in the waiting room" text="The host moved you here. You'll rejoin automatically if they let you back in." action="Leave instead" onAction={leave} />;
   if (phase === "connecting-media") return <EmptyState title="Joining your room" text="Connecting securely…" />;
@@ -367,7 +374,7 @@ export default function GroupRoom() {
                 {peer.isModerator && <span className="absolute top-11 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{peer.role === "premium" ? "MUSIC MOD" : "HOST / MOD"}</span>}
                 {!['admin', 'developer'].includes(peer.role || 'user') && <button onClick={() => setReportTargetId(peer.socketId)} className="absolute top-2 left-2 z-10 rounded-md border border-coral/30 bg-black/75 px-2.5 py-1 text-[11px] font-medium text-coral backdrop-blur hover:bg-coral/20">Report</button>}
                 {mutedPeers.has(peer.socketId) && <span className="absolute top-20 left-2 z-10 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}
-                {isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator || (role === "admin" && peer.role === "user")) && (
+                {isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator || (role === "admin" && ["user", "premium"].includes(peer.role || "user"))) && (
                   <ModMenu isDeveloper={role === "developer"} isAdmin={role === "admin"} isPremium={role === "premium"} isModerator={peer.isModerator} targetRole={peer.role || "user"} isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} onDemote={() => mod("group:mod-demote", peer.socketId)} />
                 )}
               </div>
@@ -381,7 +388,7 @@ export default function GroupRoom() {
           </div>
         </div>
         <aside className="flex flex-col gap-4 min-h-0 lg:min-h-0">
-          <QuickGamePanel game={game} isModerator={isModerator} onStart={startGame} onTap={tapGame} onAnswer={answerGame} onDraw={drawGame} isDrawer={game?.drawerId === socket.id} drawWord={drawWord} onStop={stopGame} error={gameError} />
+          <QuickGamePanel game={game} isModerator={isModerator} onStart={startGame} onTap={tapGame} onAnswer={answerGame} onDraw={drawGame} isDrawer={game?.drawerId === socket.id} drawWord={drawWord} isBombTurn={game?.bombTurnId === socket.id} canEndGame={role === "admin" || role === "developer"} onStop={stopGame} error={gameError} />
           {isModerator && visibleWaiting.length > 0 && (
             <div className="bg-panel/85 rounded-2xl border border-violet/30 overflow-hidden surface-lift shrink-0">
               <div className="px-4 py-3 border-b border-white/5 font-display text-sm text-violet">Waiting room · {visibleWaiting.length}</div>

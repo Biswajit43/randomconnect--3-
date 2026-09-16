@@ -14,7 +14,7 @@ export default function Profile() {
   const [community, setCommunity] = useState(null);
   const [avatar, setAvatar] = useState(() => getAvatarUrl());
   const [avatarMessage, setAvatarMessage] = useState("");
-  const [staffRole, setStaffRole] = useState(null);
+  const [staffRole, setStaffRole] = useState(() => localStorage.getItem("rc_staff_role") || null);
   const [recoveryCode, setRecoveryCode] = useState(() => localStorage.getItem("rc_recovery_code") || "");
   const [recoveryMessage, setRecoveryMessage] = useState("");
   const [loading, setLoading] = useState(true);
