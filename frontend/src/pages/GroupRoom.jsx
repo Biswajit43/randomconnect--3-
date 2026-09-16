@@ -249,10 +249,10 @@ export default function GroupRoom() {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 sm:gap-5 min-h-0">
         <div className="flex flex-col gap-3 sm:gap-4 min-h-0">
           <MusicPlayerBoundary music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />
-          <div className={`grid ${gridCols} gap-2 sm:gap-3 flex-1 content-start animate-enter`}>
+          <div className={`relative z-20 grid ${gridCols} gap-2 sm:gap-3 flex-1 content-start animate-enter`}>
             <VideoTile stream={localStream} muted mirrored label={displayName.current} role={role} />
             {visiblePeers.map((peer) => (
-              <div key={peer.socketId} className="relative z-0 focus-within:z-20 has-[[data-menu-open=true]]:z-20">
+              <div key={peer.socketId} className="relative z-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[60]">
                 <VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName || "Guest"} role={peer.role || "user"} />
                 {mutedPeers.has(peer.socketId) && <span className="absolute top-2 left-2 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}
                 {isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator || (role === "admin" && peer.role === "user")) && (
@@ -261,7 +261,7 @@ export default function GroupRoom() {
               </div>
             ))}
           </div>
-          <div className="sticky bottom-0 z-30 flex flex-wrap items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
+          <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
             <IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton>
             <IconButton onClick={toggleCam} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton>
             <button onClick={leave} className="px-5 sm:px-6 py-3 rounded-full bg-coral text-ink font-display font-semibold text-sm hover:brightness-110 active:scale-95 transition shadow-lg shadow-coral/10 shrink-0">Leave room</button>
@@ -328,10 +328,19 @@ function IconButton({ active, disabled, onClick, label, children }) {
 
 function ModMenu({ isDeveloper, isAdmin, isModerator, targetRole, isMuted, onMute, onUnmute, onWaiting, onRemove, onPromote, onDemote }) {
   const [open, setOpen] = useState(false);
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    function onOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) setOpen(false);
+    }
+    document.addEventListener("pointerdown", onOutside);
+    return () => document.removeEventListener("pointerdown", onOutside);
+  }, [open]);
   const canDemote = isModerator && (isDeveloper || (isAdmin && targetRole === "user"));
   const items = isMuted ? [["Unmute", onUnmute], ["Waiting room", onWaiting], ...(!isModerator ? [["Make moderator", onPromote]] : []), ...(canDemote ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]] : [["Mute mic", onMute], ["Waiting room", onWaiting], ...(!isModerator ? [["Make moderator", onPromote]] : []), ...(canDemote ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]];
   return (
-    <div className="absolute top-2 right-2 z-20" data-menu-open={open}>
+    <div ref={menuRef} className="absolute top-2 right-2 z-40" data-menu-open={open}>
       <button
         onClick={() => setOpen((current) => !current)}
         className="text-xs px-3 py-2 min-h-[36px] rounded-md bg-black/70 text-signal2 hover:bg-signal/20 backdrop-blur touch-manipulation"
@@ -339,7 +348,7 @@ function ModMenu({ isDeveloper, isAdmin, isModerator, targetRole, isMuted, onMut
         Host ···
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 w-44 bg-panel2 border border-white/10 rounded-lg overflow-hidden text-sm shadow-2xl z-30">
+        <div className="absolute right-0 mt-1 w-44 bg-panel2 border border-white/10 rounded-lg overflow-hidden text-sm shadow-2xl z-50">
           {items.map(([label, action]) => (
             <button key={label} onClick={() => { action(); setOpen(false); }} className="w-full text-left px-3 py-2.5 text-white/90 hover:bg-white/5 active:bg-white/10 touch-manipulation">
               {label}
