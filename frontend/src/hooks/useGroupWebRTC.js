@@ -19,7 +19,12 @@ export function useGroupWebRTC({ localStream }) {
   const pendingIceRef = useRef(new Map());
   const reconnectTimersRef = useRef(new Map());
   const recoverPeerRef = useRef(() => {});
+  const localStreamRef = useRef(localStream);
   const roomIdRef = useRef(null);
+
+  useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
 
   const createPeer = useCallback(
     (peerId) => {
@@ -56,11 +61,11 @@ export function useGroupWebRTC({ localStream }) {
         }
       };
 
-      localStream?.getTracks().forEach((track) => pc.addTrack(track, localStream));
+      localStreamRef.current?.getTracks().forEach((track) => pc.addTrack(track, localStreamRef.current));
       peersRef.current.set(peerId, pc);
       return pc;
     },
-    [localStream]
+    []
   );
 
   const removePeer = useCallback((peerId) => {

@@ -142,7 +142,7 @@ export default function GroupRoom() {
         return alreadyExists ? safeMessages : [...safeMessages, message];
       });
     }
-    function onForceMute() { localStream?.getAudioTracks().forEach((track) => { track.enabled = false; }); setMicOn(false); setForceMuted(true); showBanner("The host muted your mic."); }
+    function onForceMute() { localStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = false; }); setMicOn(false); setForceMuted(true); showBanner("The host muted your mic."); }
     function onForceUnmute() { setForceMuted(false); showBanner("Your mic is available again."); }
     function onMovedToWaiting() { closeAll(); setPeers([]); setPhase("waiting"); }
     function onAdmitted() { setPeers([]); setForceMuted(false); setPhase("connecting-media"); socket.emit("group:join", { roomId, displayName: displayName.current }); }
@@ -203,7 +203,7 @@ export default function GroupRoom() {
     return () => {
       ["connect", "disconnect", "blocked", "group:join-rejected", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:demoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list", "group:game-state", "group:game-error", "group:game-draw", "group:draw-word"].forEach((event) => socket.off(event));
     };
-  }, [closeAll, connectToExistingPeer, localStream, navigate, roomId]);
+  }, [closeAll, connectToExistingPeer, navigate, roomId]);
 
   useEffect(() => {
     Object.entries(remoteStreams).forEach(([socketId, stream]) => stream.getAudioTracks().forEach((track) => { track.enabled = !mutedPeers.has(socketId); }));

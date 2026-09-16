@@ -378,23 +378,6 @@ export function registerGroupRooms(io) {
       safeHandler("group:join", async ({ roomId, displayName }) => {
         if (!socket.data.fingerprint) return; // must identify() first (see signaling.js)
 
-        let room;
-        try {
-          room = await Room.findById(roomId).select("maxParticipants").lean();
-        } catch (error) {
-          console.error("[groupRooms] room capacity check failed:", error.message);
-          socket.emit("group:join-rejected", { reason: "server_error" });
-          return;
-        }
-        if (!room) {
-          socket.emit("group:join-rejected", { reason: "room_not_found" });
-          return;
-        }
-        if (roomState.count(roomId) >= room.maxParticipants) {
-          socket.emit("group:join-rejected", { reason: "room_full", maxParticipants: room.maxParticipants });
-          return;
-        }
-
         if (roomState.isKicked(roomId, socket.data.fingerprint)) {
           socket.emit("group:removed", { reason: "You were removed from this room." });
           return;
