@@ -30,12 +30,14 @@ export default function Controls({
         Stop
       </button>
 
-      <button
-        onClick={onReport}
-        className="px-4 sm:px-5 py-3 rounded-full bg-coral/10 text-coral font-display font-medium text-sm border border-coral/30 hover:bg-coral/20 active:scale-95 transition"
-      >
-        Report
-      </button>
+      {onReport && (
+        <button
+          onClick={onReport}
+          className="px-4 sm:px-5 py-3 rounded-full bg-coral/10 text-coral font-display font-medium text-sm border border-coral/30 hover:bg-coral/20 active:scale-95 transition"
+        >
+          Report
+        </button>
+      )}
 
     </div>
   );

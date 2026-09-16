@@ -22,6 +22,7 @@ export default function ChatRoom() {
   const [roomId, setRoomId] = useState(null);
   const [blockedReason, setBlockedReason] = useState(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [role, setRole] = useState("user");
 
   const { remoteStream, connectionState, startCall, endCall, addVideoTrack } = useWebRTC({ localStream });
   const mediaRequested = useRef(false);
@@ -70,7 +71,8 @@ export default function ChatRoom() {
   }, [interests]);
 
   useEffect(() => {
-    function onIdentified() {
+    function onIdentified(identity) {
+      setRole(identity?.role || "user");
       joinQueue();
     }
     function onMatchFound({ roomId, initiator, partnerDisplayName }) {
@@ -209,7 +211,7 @@ export default function ChatRoom() {
             onToggleCam={toggleCam}
             onSkip={skip}
             onStop={stop}
-            onReport={() => setReportOpen(true)}
+            onReport={role === "user" ? () => setReportOpen(true) : null}
           />
         </div>
 
