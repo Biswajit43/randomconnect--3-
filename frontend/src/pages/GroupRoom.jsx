@@ -280,7 +280,9 @@ export default function GroupRoom() {
             {visiblePeers.map((peer) => (
               <div key={peer.socketId} className="relative z-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[60]">
                 <VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName || "Guest"} role={peer.role || "user"} />
-                <button onClick={() => setReportTargetId(peer.socketId)} className="absolute bottom-2 left-2 rounded-md border border-coral/30 bg-black/70 px-2 py-1 text-[11px] font-medium text-coral backdrop-blur hover:bg-coral/20">Report</button>
+                <div className="mt-1.5 flex justify-end">
+                  <button onClick={() => setReportTargetId(peer.socketId)} className="rounded-md border border-coral/30 bg-coral/10 px-2.5 py-1 text-[11px] font-medium text-coral hover:bg-coral/20">Report participant</button>
+                </div>
                 {mutedPeers.has(peer.socketId) && <span className="absolute top-2 left-2 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}
                 {isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator || (role === "admin" && peer.role === "user")) && (
                   <ModMenu isDeveloper={role === "developer"} isAdmin={role === "admin"} isModerator={peer.isModerator} targetRole={peer.role || "user"} isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} onDemote={() => mod("group:mod-demote", peer.socketId)} />
