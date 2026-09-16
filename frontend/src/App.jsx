@@ -13,6 +13,7 @@ export default function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/chat" element={<ChatRoom />} />
       <Route path="/rooms" element={<Rooms />} />
+      <Route path="/room" element={<Rooms />} />
       <Route path="/rooms/:roomId" element={<GroupRoom />} />
       <Route path="/profile" element={<Profile />} />
       <Route path="/guide" element={<Guide />} />

@@ -15,7 +15,7 @@ export default function Profile() {
   const [avatar, setAvatar] = useState(() => getAvatarUrl());
   const [avatarMessage, setAvatarMessage] = useState("");
   const [staffRole, setStaffRole] = useState(null);
-  const [recoveryCode, setRecoveryCode] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState(() => localStorage.getItem("rc_recovery_code") || "");
   const [recoveryMessage, setRecoveryMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -43,6 +43,7 @@ export default function Profile() {
     try {
       const result = await api.createPremiumRecovery(getFingerprint());
       setRecoveryCode(result.code);
+      localStorage.setItem("rc_recovery_code", result.code);
       setRecoveryMessage("Save this code somewhere safe. It restores your remaining Premium time after browser data is cleared.");
     } catch (error) { setRecoveryMessage(error.message || "Could not create a recovery code."); }
   }

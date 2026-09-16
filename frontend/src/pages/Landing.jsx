@@ -32,11 +32,15 @@ export default function Landing() {
   const [staffAccessOpen, setStaffAccessOpen] = useState(false);
 
   useEffect(() => {
-    const invite = new URLSearchParams(window.location.search).get("invite");
+    const params = new URLSearchParams(window.location.search);
+    const invite = params.get("invite");
     if (invite) setPremiumCode(invite);
-    const recovery = new URLSearchParams(window.location.search).get("recover");
+    const recovery = params.get("recover");
     if (recovery) setRecoveryCode(recovery);
-  }, []);
+    if (!invite && !recovery && getDisplayName() && localStorage.getItem("rc_onboarded") === "1") {
+      navigate(state?.returnTo || "/rooms", { replace: true });
+    }
+  }, [navigate, state?.returnTo]);
 
   const canEnter = name.trim().length > 0 && ageConfirmed && agreedRules;
   const trimmedName = name.trim();
@@ -73,6 +77,9 @@ export default function Landing() {
       setPremiumBusy(false);
     }
     setDisplayName(name);
+    localStorage.setItem("rc_onboarded", "1");
+    localStorage.setItem("rc_age_confirmed", "1");
+    localStorage.setItem("rc_rules_agreed", "1");
     const tags = interests
       .split(",")
       .map((t) => t.trim().toLowerCase())
@@ -84,6 +91,9 @@ export default function Landing() {
   function forgetMe() {
     localStorage.removeItem("rc_fp");
     localStorage.removeItem("rc_name");
+    localStorage.removeItem("rc_onboarded");
+    localStorage.removeItem("rc_age_confirmed");
+    localStorage.removeItem("rc_rules_agreed");
     setName("");
     setClearedNotice(true);
     setTimeout(() => setClearedNotice(false), 3500);
@@ -367,6 +377,9 @@ function StaffAccessModal({ onClose }) {
       const session = await api.adminLogin(password);
       localStorage.setItem("rc_name", session.displayName);
       localStorage.setItem("rc_staff_role", session.role);
+      localStorage.setItem("rc_onboarded", "1");
+      localStorage.setItem("rc_age_confirmed", "1");
+      localStorage.setItem("rc_rules_agreed", "1");
       navigate("/rooms");
     } catch (requestError) {
       setError(requestError.message);

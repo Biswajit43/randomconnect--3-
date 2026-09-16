@@ -7,6 +7,14 @@ import VideoTile from "../components/VideoTile.jsx";
 import { MusicPlayerBoundary } from "../components/MusicPlayer.jsx";
 import ReportModal from "../components/ReportModal.jsx";
 
+const CONVERSATION_SPARKS = [
+  "What is something you could talk about for hours?",
+  "What song matches your mood today?",
+  "Would you rather travel to the past or the future?",
+  "What small thing made you smile recently?",
+  "Teach the room one surprisingly useful fact.",
+];
+
 export default function GroupRoom() {
   const { roomId } = useParams();
   const { state } = useLocation();
@@ -23,6 +31,7 @@ export default function GroupRoom() {
   const [mutedPeers, setMutedPeers] = useState(() => new Set());
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
+  const [sparkIndex, setSparkIndex] = useState(0);
   const [banner, setBanner] = useState(null);
   const [blockedReason, setBlockedReason] = useState(null);
   const [forceMuted, setForceMuted] = useState(false);
@@ -245,6 +254,10 @@ export default function GroupRoom() {
       setDraft("");
     });
   }
+  function addConversationSpark() {
+    setDraft(`Spark: ${CONVERSATION_SPARKS[sparkIndex]}`);
+    setSparkIndex((current) => (current + 1) % CONVERSATION_SPARKS.length);
+  }
   function submitGroupReport(report) {
     if (!reportTargetId) return;
     socket.emit("group:report-user", { roomId, targetId: reportTargetId, ...report }, (result) => {
@@ -287,7 +300,7 @@ export default function GroupRoom() {
         <div className="text-center flex-1 min-w-0 order-3 sm:order-none basis-full sm:basis-auto">
           <h1 className="font-display font-semibold text-white flex items-center gap-2 justify-center truncate">
             <span className="truncate">{room?.name || "Room"}</span>
-            {isModerator && <span className="text-[10px] font-mono uppercase tracking-wide px-2 py-0.5 rounded-full bg-signal/15 text-signal2 border border-signal/30 shrink-0">host</span>}
+            {isModerator && <span className="text-[10px] font-mono uppercase tracking-wide px-2 py-0.5 rounded-full bg-signal/15 text-signal2 border border-signal/30 shrink-0">{role === "premium" ? "music mod" : "host"}</span>}
           </h1>
           <p className="text-xs text-mist font-mono mt-1">{totalTiles} {totalTiles === 1 ? "person" : "people"} · live</p>
         </div>
@@ -310,12 +323,12 @@ export default function GroupRoom() {
           <div className={`relative z-20 grid ${gridCols} gap-2 sm:gap-3 flex-1 content-start animate-enter`}>
             <div className="relative">
               <VideoTile stream={localStream} muted mirrored label={displayName.current} avatarUrl={getAvatarUrl()} role={role} />
-              {isModerator && <span className="absolute top-3 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">HOST / MOD</span>}
+              {isModerator && <span className="absolute top-3 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{role === "premium" ? "MUSIC MOD" : "HOST / MOD"}</span>}
             </div>
             {visiblePeers.map((peer) => (
               <div key={peer.socketId} className="relative z-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[60]">
                 <VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName || "Guest"} avatarUrl={peer.avatarUrl} role={peer.role || "user"} />
-                {peer.isModerator && <span className="absolute top-11 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">HOST / MOD</span>}
+                {peer.isModerator && <span className="absolute top-11 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{peer.role === "premium" ? "MUSIC MOD" : "HOST / MOD"}</span>}
                 {!['admin', 'developer'].includes(peer.role || 'user') && <button onClick={() => setReportTargetId(peer.socketId)} className="absolute top-2 left-2 z-10 rounded-md border border-coral/30 bg-black/75 px-2.5 py-1 text-[11px] font-medium text-coral backdrop-blur hover:bg-coral/20">Report</button>}
                 {mutedPeers.has(peer.socketId) && <span className="absolute top-20 left-2 z-10 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}
                 {isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator || (role === "admin" && peer.role === "user")) && (
@@ -354,7 +367,7 @@ export default function GroupRoom() {
                 <p className="font-display text-sm text-white">Room chat</p>
                 <p className="text-[11px] text-mist/60 mt-0.5">Say hi and keep it respectful.</p>
               </div>
-              {isModerator && <button onClick={() => setDraft("/play ")} className="px-2 py-1 rounded-md bg-signal/10 text-signal2 text-[11px] hover:bg-signal/20 shrink-0">+ song</button>}
+              <div className="flex items-center gap-1.5 shrink-0"><button onClick={addConversationSpark} className="px-2 py-1 rounded-md bg-violet/10 text-violet text-[11px] hover:bg-violet/20">✦ spark</button>{isModerator && <button onClick={() => setDraft("/play ")} className="px-2 py-1 rounded-md bg-signal/10 text-signal2 text-[11px] hover:bg-signal/20">+ song</button>}</div>
             </div>
             <div ref={chatScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-2">
               {visibleMessages.length === 0 && <p className="text-sm text-mist/60">The room is quiet. Say hello.</p>}

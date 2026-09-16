@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api.js";
-import { getFingerprint, getDisplayName, setDisplayName } from "../lib/socket.js";
+import { clearLocalSession, getFingerprint, getDisplayName, setDisplayName } from "../lib/socket.js";
 import RoomCard from "../components/RoomCard.jsx";
 import CreateRoomModal from "../components/CreateRoomModal.jsx";
 
@@ -16,6 +16,7 @@ export default function Rooms() {
   const [interests, setInterests] = useState("");
   const [name, setName] = useState(() => getDisplayName());
   const [staffRole, setStaffRole] = useState(() => localStorage.getItem("rc_staff_role"));
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   // Someone can land here directly (bookmark, back button) without having
   // gone through the name/age gate on Landing — send them back if so.
@@ -42,11 +43,10 @@ export default function Rooms() {
     };
   }, []);
 
-  async function signOutStaff() {
-    await api.adminLogout().catch(() => {});
+  async function logout() {
+    if (staffRole) await api.adminLogout().catch(() => {});
+    clearLocalSession();
     setStaffRole(null);
-    localStorage.removeItem("rc_staff_role");
-    localStorage.removeItem("rc_name");
     setName("");
     navigate("/");
   }
@@ -115,7 +115,7 @@ export default function Rooms() {
         <NameBadge name={name} onChange={(n) => { setName(n); setDisplayName(n); }} />
         <button onClick={() => navigate("/profile")} className="shrink-0 rounded-lg border border-violet/30 px-2.5 py-2 text-xs text-violet hover:bg-violet/10" aria-label="Open profile and rewards" title="Profile and rewards">Profile</button>
         <button onClick={() => navigate("/guide")} className="shrink-0 rounded-lg border border-white/10 px-2.5 py-2 text-xs text-mist hover:text-white" aria-label="Open guide and feedback" title="Guide, badges, rules and feedback">Guide</button>
-        {staffRole && <button onClick={signOutStaff} className="shrink-0 rounded-lg border border-coral/30 px-2.5 py-2 text-xs text-coral hover:bg-coral/10" aria-label="Sign out staff" title="Sign out staff">Sign out</button>}
+        <button onClick={() => setLogoutOpen(true)} className="shrink-0 rounded-lg border border-coral/30 px-2.5 py-2 text-xs text-coral hover:bg-coral/10" aria-label="Log out" title="Log out">Log out</button>
         <span className="flex items-center gap-2 text-sm text-signal2 font-mono shrink-0">
           <span className="w-2 h-2 rounded-full bg-signal animate-pulse" /> live
         </span>
@@ -235,8 +235,21 @@ export default function Rooms() {
       </main>
 
       <CreateRoomModal open={modalOpen} onClose={() => setModalOpen(false)} onCreate={handleCreate} creating={creating} />
+      {logoutOpen && <LogoutModal onClose={() => setLogoutOpen(false)} onLogout={logout} />}
     </div>
   );
+}
+
+function LogoutModal({ onClose, onLogout }) {
+  const recoveryCode = localStorage.getItem("rc_recovery_code") || "";
+  const [copied, setCopied] = useState(false);
+
+  async function copyCode() {
+    if (!recoveryCode) return;
+    try { await navigator.clipboard.writeText(recoveryCode); setCopied(true); } catch { setCopied(false); }
+  }
+
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-5 backdrop-blur-sm"><div className="w-full max-w-md rounded-2xl border border-white/10 bg-panel p-6 shadow-2xl"><p className="font-mono text-[11px] uppercase tracking-[0.2em] text-coral">Leaving this device</p><h2 className="mt-2 font-display text-xl font-semibold text-white">Log out of RandomConnect?</h2><p className="mt-2 text-sm leading-relaxed text-mist">Your name and device session will be cleared. You can come back later and onboard again.</p>{recoveryCode ? <div className="mt-4 rounded-xl border border-signal/20 bg-signal/5 p-3"><p className="text-xs text-signal2">Save your Premium recovery code first:</p><p className="mt-2 break-all font-mono text-xs text-white">{recoveryCode}</p><button onClick={copyCode} className="mt-3 rounded-lg border border-signal/30 px-3 py-2 text-xs font-semibold text-signal2 hover:bg-signal/10">{copied ? "Copied" : "Copy recovery code"}</button></div> : <p className="mt-4 rounded-lg border border-violet/20 bg-violet/5 px-3 py-2 text-xs text-mist">No recovery code saved. Create one from Profile before logging out if you have Premium.</p>}<div className="mt-5 flex justify-end gap-2"><button onClick={onClose} className="rounded-lg border border-white/10 px-4 py-2.5 text-sm text-mist hover:text-white">Stay</button><button onClick={onLogout} className="rounded-lg bg-coral px-4 py-2.5 text-sm font-semibold text-ink hover:brightness-110">Log out</button></div></div></div>;
 }
 
 function PremiumReferralCard() {

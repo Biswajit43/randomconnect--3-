@@ -57,3 +57,7 @@ export function setAvatarUrl(value) {
   else localStorage.removeItem("rc_avatar");
   return value || "";
 }
+
+export function clearLocalSession() {
+  ["rc_fp", "rc_name", "rc_premium_token", "rc_avatar", "rc_staff_role", "rc_onboarded", "rc_age_confirmed", "rc_rules_agreed", "rc_recovery_code"].forEach((key) => localStorage.removeItem(key));
+}

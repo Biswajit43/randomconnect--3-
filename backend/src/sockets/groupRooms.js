@@ -84,7 +84,7 @@ async function canActOnTarget(socket, roomId, target) {
 
 async function canControlMusic(socket, roomId) {
   if (!roomId || !socket.data.groupRooms?.has(roomId)) return false;
-  if (roleOf(socket) === "developer" || roleOf(socket) === "admin") return true;
+  if (["developer", "admin", "premium"].includes(roleOf(socket))) return true;
   return isModeratorOfRoom(roomId, socket.data.fingerprint);
 }
 
@@ -172,7 +172,7 @@ export function registerGroupRooms(io) {
 
     socket.on("group:music-pause", safeHandler("group:music-pause", async ({ roomId }, ack) => {
       if (!(await canControlMusic(socket, roomId))) {
-        if (typeof ack === "function") ack({ ok: false, error: "Only a host can control room music." });
+        if (typeof ack === "function") ack({ ok: false, error: "Only a host or music moderator can control room music." });
         return;
       }
       const currentMusic = roomState.getMusic(roomId);
@@ -192,7 +192,7 @@ export function registerGroupRooms(io) {
 
     socket.on("group:music-resume", safeHandler("group:music-resume", async ({ roomId }, ack) => {
       if (!(await canControlMusic(socket, roomId))) {
-        if (typeof ack === "function") ack({ ok: false, error: "Only a host can control room music." });
+        if (typeof ack === "function") ack({ ok: false, error: "Only a host or music moderator can control room music." });
         return;
       }
       const currentMusic = roomState.getMusic(roomId);
@@ -219,8 +219,8 @@ export function registerGroupRooms(io) {
         return;
       }
       if (!(await canControlMusic(socket, roomId))) {
-        socket.emit("group:music-error", { message: "Only the host can control room music." });
-        if (typeof ack === "function") ack({ ok: false, error: "Only the host can control room music." });
+        socket.emit("group:music-error", { message: "Only a host or music moderator can control room music." });
+        if (typeof ack === "function") ack({ ok: false, error: "Only a host or music moderator can control room music." });
         return;
       }
       const now = Date.now();
@@ -272,8 +272,8 @@ export function registerGroupRooms(io) {
           const isMod = await canModerateRoom(socket, roomId);
           if (!isMod) {
             console.warn("[groupRooms] music command rejected: sender is not a moderator");
-            socket.emit("group:music-error", { message: "Only the host can control room music." });
-            if (typeof ack === "function") ack({ ok: false, error: "Only the host can control room music." });
+            socket.emit("group:music-error", { message: "Only a host or music moderator can control room music." });
+            if (typeof ack === "function") ack({ ok: false, error: "Only a host or music moderator can control room music." });
             return;
           }
 
