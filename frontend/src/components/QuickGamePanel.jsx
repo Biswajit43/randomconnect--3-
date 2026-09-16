@@ -83,7 +83,7 @@ export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAn
       {!game && <div className="mt-4">
         <p className="text-sm leading-relaxed text-white/80">Pick a fast reaction challenge, Draw & Guess, or Bomb Party.</p>
         {isModerator ? <>
-          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-3 gap-2">
             <button onClick={() => setMode("pulse")} className={`rounded-xl border px-3 py-3 text-left transition ${mode === "pulse" ? "border-fuchsia-300/60 bg-fuchsia-400/15" : "border-white/10 bg-black/10 hover:bg-white/5"}`}>
               <span className="block text-sm font-semibold text-white">Pulse Clash</span><span className="mt-1 block text-[11px] text-mist">Tap first</span>
             </button>

@@ -397,7 +397,7 @@ export default function GroupRoom() {
           </div>
         </div>
         <aside className="flex flex-col gap-4 min-h-0 lg:min-h-0">
-          <QuickGamePanel game={game} isModerator={isModerator} onStart={startGame} onTap={tapGame} onAnswer={answerGame} onDraw={drawGame} isDrawer={game?.drawerId === socket.id} drawWord={drawWord} isBombTurn={game?.bombTurnId === socket.id} canEndGame={role === "admin" || role === "developer"} onStop={stopGame} error={gameError} />
+          <QuickGamePanel game={game} isModerator={isModerator} onStart={startGame} onTap={tapGame} onAnswer={answerGame} onDraw={drawGame} isDrawer={game?.drawerId === socket.id} drawWord={drawWord} isBombTurn={game?.bombTurnId === socket.id} canEndGame={["admin", "developer", "premium"].includes(role)} onStop={stopGame} error={gameError} />
           {isModerator && visibleWaiting.length > 0 && (
             <div className="bg-panel/85 rounded-2xl border border-violet/30 overflow-hidden surface-lift shrink-0">
               <div className="px-4 py-3 border-b border-white/5 font-display text-sm text-violet">Waiting room · {visibleWaiting.length}</div>
