@@ -239,7 +239,18 @@ export default function GroupRoom() {
   }
   const mod = (event, targetId) => socket.emit(event, { roomId, targetId });
 
-  if (phase === "blocked") return <EmptyState title="Can't join this room" text={blockedReason === "banned" ? "This device or session is currently restricted. If this seems wrong, ask an administrator to review the active ban." : blockedReason === "age_confirmation_required" ? "Age confirmation is required before joining." : "The room connection could not be verified. Please try again."} action="Back to rooms" onAction={leave} />;
+  if (phase === "blocked") {
+    const blockedText = blockedReason === "banned"
+      ? "This device or session is currently restricted. If this seems wrong, ask an administrator to review the active ban."
+      : blockedReason === "age_confirmation_required"
+        ? "Age confirmation is required before joining."
+        : blockedReason === "rate_limited"
+          ? "Too many connection attempts came from this network. Please wait a few minutes and try again. This is not a ban."
+          : blockedReason === "server_error"
+            ? "The room server could not verify your session. Please refresh and try again."
+            : "The room connection could not be verified. Please try again.";
+    return <EmptyState title={blockedReason === "banned" ? "Access restricted" : "Can't join this room"} text={blockedText} action="Back to rooms" onAction={leave} />;
+  }
   if (phase === "waiting") return <EmptyState title="You're in the waiting room" text="The host moved you here. You'll rejoin automatically if they let you back in." action="Leave instead" onAction={leave} />;
   if (phase === "connecting-media") return <EmptyState title="Joining your room" text="Connecting securely…" />;
 
@@ -282,8 +293,8 @@ export default function GroupRoom() {
             {visiblePeers.map((peer) => (
               <div key={peer.socketId} className="relative z-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[60]">
                 <VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName || "Guest"} role={peer.role || "user"} />
-                <button onClick={() => setReportTargetId(peer.socketId)} className="absolute top-2 left-2 z-10 rounded-md border border-coral/30 bg-black/75 px-2.5 py-1 text-[11px] font-medium text-coral backdrop-blur hover:bg-coral/20">Report</button>
-                {mutedPeers.has(peer.socketId) && <span className="absolute top-11 left-2 z-10 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}
+                <button onClick={() => setReportTargetId(peer.socketId)} className="absolute top-11 left-2 z-10 rounded-md border border-coral/30 bg-black/75 px-2.5 py-1 text-[11px] font-medium text-coral backdrop-blur hover:bg-coral/20">Report</button>
+                {mutedPeers.has(peer.socketId) && <span className="absolute top-20 left-2 z-10 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}
                 {isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator || (role === "admin" && peer.role === "user")) && (
                   <ModMenu isDeveloper={role === "developer"} isAdmin={role === "admin"} isModerator={peer.isModerator} targetRole={peer.role || "user"} isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} onDemote={() => mod("group:mod-demote", peer.socketId)} />
                 )}

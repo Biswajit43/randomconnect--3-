@@ -39,7 +39,10 @@ export async function isBanned({ fingerprint, ipHash }) {
   if (!identityMatches.length) return false;
   const ban = await BannedUser.findOne({
     $or: identityMatches,
-    $and: [{ $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }],
+    $and: [
+      { reason: { $not: /^Auto-ban:/i } },
+      { $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] },
+    ],
   }).catch(() => null);
   return Boolean(ban);
 }
