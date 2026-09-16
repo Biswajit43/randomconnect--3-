@@ -76,11 +76,6 @@ export function registerSignaling(io) {
         }
 
         socket.data.fingerprint = fingerprint || uuid();
-        if (!allowAction(`identify:${ipHash}`, { limit: 12, windowMs: 10 * 60 * 1000 })) {
-          socket.emit("blocked", { reason: "rate_limited" });
-          socket.disconnect(true);
-          return;
-        }
         const requestedName = (displayName || "").trim().slice(0, 30);
         socket.data.displayName = socket.data.role === "developer"
           ? socket.data.staffDisplayName || "Developer"
@@ -109,10 +104,6 @@ export function registerSignaling(io) {
 
     socket.on("queue:join", ({ interests = [] } = {}) => {
       if (!socket.data.fingerprint) return; // must identify() first
-      if (!allowAction(`queue:${socket.data.ipHash}:${socket.data.fingerprint}`, { limit: 8, windowMs: 60 * 1000 })) {
-        socket.emit("queue:waiting", { position: 0, rateLimited: true });
-        return;
-      }
       if (socket.data.roomId) leaveRoom(io, socket);
 
       const entry = { socketId: socket.id, interests, joinedAt: Date.now() };
