@@ -109,6 +109,7 @@ export function registerGroupRooms(io) {
           fingerprint: socket.data.fingerprint,
           displayName: socket.data.displayName || "Guest",
           role: socket.data.role || "user",
+          avatarUrl: socket.data.avatarUrl || null,
         };
         // The socket is added to groupRooms just below this line, so the
         // normal moderator check cannot be used during the first join.
@@ -134,6 +135,7 @@ export function registerGroupRooms(io) {
             socketId: id,
             displayName: p?.data?.groupMeta?.displayName || "Guest",
             role: p?.data?.groupMeta?.role || "user",
+            avatarUrl: p?.data?.groupMeta?.avatarUrl || null,
             isModerator: p?.data?.isModeratorByRoom?.[roomId] || false,
             isMuted: roomState.isMuted(roomId, peerFingerprint),
           };
@@ -152,6 +154,7 @@ export function registerGroupRooms(io) {
           socketId: socket.id,
           displayName: meta.displayName,
           role: meta.role,
+          avatarUrl: meta.avatarUrl,
           isModerator,
         });
 

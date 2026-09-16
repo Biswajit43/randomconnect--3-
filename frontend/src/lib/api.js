@@ -47,4 +47,6 @@ export const api = {
   premiumReferral: (fingerprint) => request("/premium/referral", { method: "POST", body: JSON.stringify({ fingerprint }) }),
   premiumStatus: (fingerprint) => request(`/premium/status?fingerprint=${encodeURIComponent(fingerprint)}`),
   communityStatus: (fingerprint) => request(`/community/status?fingerprint=${encodeURIComponent(fingerprint)}`),
+  submitFeedback: (payload) => request("/feedback", { method: "POST", body: JSON.stringify(payload) }),
+  adminFeedback: () => request("/admin/feedback"),
 };

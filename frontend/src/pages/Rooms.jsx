@@ -114,6 +114,7 @@ export default function Rooms() {
         <div className="flex items-center gap-2 ml-auto min-w-0 max-w-full">
         <NameBadge name={name} onChange={(n) => { setName(n); setDisplayName(n); }} />
         <button onClick={() => navigate("/profile")} className="shrink-0 rounded-lg border border-violet/30 px-2.5 py-2 text-xs text-violet hover:bg-violet/10" aria-label="Open profile and rewards" title="Profile and rewards">Profile</button>
+        <button onClick={() => navigate("/guide")} className="shrink-0 rounded-lg border border-white/10 px-2.5 py-2 text-xs text-mist hover:text-white" aria-label="Open guide and feedback" title="Guide, badges, rules and feedback">Guide</button>
         {staffRole && <button onClick={signOutStaff} className="shrink-0 rounded-lg border border-coral/30 px-2.5 py-2 text-xs text-coral hover:bg-coral/10" aria-label="Sign out staff" title="Sign out staff">Sign out</button>}
         <span className="flex items-center gap-2 text-sm text-signal2 font-mono shrink-0">
           <span className="w-2 h-2 rounded-full bg-signal animate-pulse" /> live

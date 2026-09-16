@@ -78,6 +78,11 @@ export function useWebRTC({ localStream }) {
     socket.emit("webrtc:offer", { roomId: roomIdRef.current, sdp: offer });
   }, []);
 
+  const replaceVideoTrack = useCallback(async (track) => {
+    const sender = pcRef.current?.getSenders().find((item) => item.track?.kind === "video");
+    if (sender) await sender.replaceTrack(track);
+  }, []);
+
   useEffect(() => {
     async function onOffer({ sdp }) {
       const pc = pcRef.current;
@@ -115,5 +120,5 @@ export function useWebRTC({ localStream }) {
     };
   }, []);
 
-  return { remoteStream, connectionState, startCall, endCall, addVideoTrack };
+  return { remoteStream, connectionState, startCall, endCall, addVideoTrack, replaceVideoTrack };
 }

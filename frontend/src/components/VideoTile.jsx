@@ -6,6 +6,7 @@ export default function VideoTile({
   label,
   mirrored = false,
   role = "user",
+  avatarUrl = "",
 }) {
   const videoRef = useRef(null);
 
@@ -204,6 +205,7 @@ export default function VideoTile({
     0.62,
     0.38,
   ];
+  const hasLiveVideo = Boolean(stream?.getVideoTracks?.().some((track) => track.readyState === "live" && track.enabled));
 
   return (
     <div
@@ -228,7 +230,7 @@ export default function VideoTile({
       }}
     >
       {/* VIDEO */}
-      {stream ? (
+      {hasLiveVideo ? (
         <video
           ref={videoRef}
           autoPlay
@@ -243,7 +245,7 @@ export default function VideoTile({
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center">
-          <div className="w-14 h-14 rounded-full bg-panel2 animate-drift" />
+          {avatarUrl ? <img src={avatarUrl} alt="" className="h-20 w-20 rounded-full object-cover border-2 border-white/15 shadow-2xl" /> : <div className="w-14 h-14 rounded-full bg-panel2 animate-drift" />}
         </div>
       )}
 
@@ -273,6 +275,7 @@ export default function VideoTile({
                 ? "text-emerald-300"
                 : "text-mist"
             }
+            ${role === "premium" ? "role-name-premium" : role === "developer" ? "role-name-developer" : ""}
           `}
         >
           {label}

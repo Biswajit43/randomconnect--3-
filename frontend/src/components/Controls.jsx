@@ -3,6 +3,7 @@ export default function Controls({
   camOn,
   onToggleMic,
   onToggleCam,
+  onFlipCamera,
   onSkip,
   onStop,
   onReport,
@@ -15,6 +16,7 @@ export default function Controls({
       <IconButton active={camOn} onClick={onToggleCam} label={camOn ? "Turn camera off" : "Turn camera on"}>
         {camOn ? "📹" : "🚫"}
       </IconButton>
+      {onFlipCamera && <IconButton active={false} onClick={onFlipCamera} disabled={!camOn} label="Switch front and rear camera">↔</IconButton>}
 
       <button
         onClick={onSkip}
@@ -43,14 +45,15 @@ export default function Controls({
   );
 }
 
-function IconButton({ active, onClick, label, children }) {
+function IconButton({ active, disabled = false, onClick, label, children }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       title={label}
       className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center border active:scale-95 transition ${
-        active ? "bg-panel2 border-white/10 text-white" : "bg-coral/10 border-coral/30 text-coral"
+        disabled ? "bg-panel2/50 border-white/5 text-mist/40 cursor-not-allowed" : active ? "bg-panel2 border-white/10 text-white" : "bg-coral/10 border-coral/30 text-coral"
       }`}
     >
       {children}

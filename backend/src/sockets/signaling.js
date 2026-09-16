@@ -73,7 +73,7 @@ export function registerSignaling(io) {
     // A lightweight fingerprint the client generates (canvas/webgl hash etc.)
     // and sends on connect. Not spoof-proof, but raises the cost of evasion
     // when combined with IP hashing.
-    socket.on("identify", async ({ fingerprint, displayName, ageConfirmed, premiumToken }) => {
+    socket.on("identify", async ({ fingerprint, displayName, ageConfirmed, premiumToken, avatarUrl }) => {
       try {
         await socket.data.identityReady;
         if (!ageConfirmed) {
@@ -91,6 +91,10 @@ export function registerSignaling(io) {
           : socket.data.role === "admin"
             ? socket.data.staffDisplayName || "Admin Manager"
             : requestedName || "Guest";
+        const requestedAvatar = typeof avatarUrl === "string" ? avatarUrl.trim() : "";
+        socket.data.avatarUrl = socket.data.role === "premium" && /^data:image\/(?:png|jpeg|webp);base64,/i.test(requestedAvatar) && requestedAvatar.length <= 60000
+          ? requestedAvatar
+          : null;
 
         const banned = await isBanned({ fingerprint: socket.data.fingerprint, ipHash });
         if (banned) {
@@ -136,8 +140,8 @@ export function registerSignaling(io) {
         // One side initiates the WebRTC offer to avoid glare. Each side gets
         // the other's display name so the UI can show a real name instead of
         // a generic "Stranger" label.
-        socket.emit("match:found", { roomId, initiator: true, partnerDisplayName: partnerSocket.data.displayName });
-        partnerSocket.emit("match:found", { roomId, initiator: false, partnerDisplayName: socket.data.displayName });
+        socket.emit("match:found", { roomId, initiator: true, partnerDisplayName: partnerSocket.data.displayName, partnerAvatarUrl: partnerSocket.data.avatarUrl || null });
+        partnerSocket.emit("match:found", { roomId, initiator: false, partnerDisplayName: socket.data.displayName, partnerAvatarUrl: socket.data.avatarUrl || null });
       } else {
         matchmaker.addToQueue(entry);
         socket.emit("queue:waiting", { position: matchmaker.queueSize() });

@@ -47,3 +47,13 @@ export function setDisplayName(name) {
 export function getPremiumToken() {
   return localStorage.getItem("rc_premium_token") || "";
 }
+
+export function getAvatarUrl() {
+  return localStorage.getItem("rc_avatar") || "";
+}
+
+export function setAvatarUrl(value) {
+  if (value) localStorage.setItem("rc_avatar", value);
+  else localStorage.removeItem("rc_avatar");
+  return value || "";
+}

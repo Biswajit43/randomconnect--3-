@@ -4,6 +4,7 @@ import BannedUser from "../models/BannedUser.js";
 import AuditLog from "../models/AuditLog.js";
 import PremiumInvite from "../models/PremiumInvite.js";
 import PremiumGrant from "../models/PremiumGrant.js";
+import Feedback from "../models/Feedback.js";
 import Room from "../models/Room.js";
 import AdminDevice from "../models/AdminDevice.js";
 import { matchmaker } from "../services/matchmaker.js";
@@ -11,6 +12,7 @@ import { roomState } from "../services/roomState.js";
 import { containsProfanity } from "../utils/profanityFilter.js";
 import { connectedUsers, adminPresence, abuseSignals, disconnectMatching } from "../services/presence.js";
 import { recordAudit } from "../services/audit.js";
+import { allowAction } from "../services/abuse.js";
 import { addPremiumDays, createInviteCode, createReferralCode, hashPremiumValue } from "../services/premium.js";
 import { getCommunityStatus, recordSuccessfulReferral } from "../services/community.js";
 import {
@@ -120,6 +122,19 @@ router.get("/health", (_req, res) => res.json({ ok: true }));
 router.get("/stats", (_req, res) => {
   res.json({ waiting: matchmaker.queueSize() });
 });
+
+router.post("/feedback", asyncRoute(async (req, res) => {
+  const { fingerprint, category, message } = req.body || {};
+  const safeFingerprint = String(fingerprint || "").trim();
+  const safeMessage = String(message || "").trim().slice(0, 2000);
+  const safeCategory = ["idea", "bug", "safety", "other"].includes(category) ? category : "other";
+  if (!safeFingerprint || safeMessage.length < 8) return res.status(400).json({ error: "Please share at least 8 characters of feedback." });
+  if (!allowAction(`feedback:${hashPremiumValue(safeFingerprint)}`, { limit: 3, windowMs: 24 * 60 * 60 * 1000 })) {
+    return res.status(429).json({ error: "Feedback limit reached for today. Thanks for helping improve the community." });
+  }
+  await Feedback.create({ fingerprintHash: hashPremiumValue(safeFingerprint), category: safeCategory, message: safeMessage });
+  res.status(201).json({ ok: true });
+}));
 
 router.post("/admin/login", asyncRoute(async (req, res) => {
   const { password } = req.body || {};
@@ -254,6 +269,10 @@ router.post("/premium/redeem", asyncRoute(async (req, res) => {
 
 router.get("/admin/audit", requireAdmin, asyncRoute(async (_req, res) => {
   res.json(await AuditLog.find().sort({ createdAt: -1 }).limit(200).lean());
+}));
+
+router.get("/admin/feedback", requireAdmin, asyncRoute(async (_req, res) => {
+  res.json(await Feedback.find().sort({ createdAt: -1 }).limit(200).lean());
 }));
 
 router.get("/admin/bans", requireAdmin, asyncRoute(async (_req, res) => {

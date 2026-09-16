@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { socket, getDisplayName, getFingerprint, getPremiumToken } from "../lib/socket.js";
+import { socket, getDisplayName, getFingerprint, getPremiumToken, getAvatarUrl } from "../lib/socket.js";
 import { api } from "../lib/api.js";
 import { useGroupWebRTC } from "../hooks/useGroupWebRTC.js";
 import VideoTile from "../components/VideoTile.jsx";
@@ -15,6 +15,7 @@ export default function GroupRoom() {
   const [localStream, setLocalStream] = useState(null);
   const [micOn, setMicOn] = useState(false);
   const [camOn, setCamOn] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState("user");
   const [peers, setPeers] = useState([]);
   const [phase, setPhase] = useState("connecting-media");
   const [isModerator, setIsModerator] = useState(false);
@@ -34,7 +35,7 @@ export default function GroupRoom() {
   const localStreamRef = useRef(null);
   const mediaRequested = useRef(false);
   const identifySent = useRef(false);
-  const { remoteStreams, connectionStates, connectToExistingPeer, setRoomId, closeAll, addVideoTrackToAllPeers } = useGroupWebRTC({ localStream });
+  const { remoteStreams, connectionStates, connectToExistingPeer, setRoomId, closeAll, addVideoTrackToAllPeers, replaceVideoTrackForAllPeers } = useGroupWebRTC({ localStream });
 
   useEffect(() => {
     if (!getDisplayName()) navigate("/", { state: { returnTo: `/rooms/${roomId}` } });
@@ -139,7 +140,7 @@ export default function GroupRoom() {
     function identify() {
       if (identifySent.current) return;
       identifySent.current = true;
-      socket.emit("identify", { fingerprint: getFingerprint(), displayName: displayName.current, ageConfirmed: true, premiumToken: getPremiumToken() });
+      socket.emit("identify", { fingerprint: getFingerprint(), displayName: displayName.current, ageConfirmed: true, premiumToken: getPremiumToken(), avatarUrl: getAvatarUrl() });
     }
     function onBlocked({ reason }) {
       identifySent.current = false;
@@ -195,7 +196,7 @@ export default function GroupRoom() {
     const tracks = localStream?.getVideoTracks() || [];
     if (!tracks.length) {
       try {
-        const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraFacing } });
         const track = videoStream.getVideoTracks()[0]; localStream.addTrack(track);
         if (phase === "joined") await addVideoTrackToAllPeers(track, localStream);
         setCamOn(true);
@@ -203,6 +204,24 @@ export default function GroupRoom() {
       return;
     }
     const next = !camOn; tracks.forEach((track) => { track.enabled = next; }); setCamOn(next);
+  }
+  async function flipCamera() {
+    if (!camOn || !localStream) return;
+    const nextFacing = cameraFacing === "user" ? "environment" : "user";
+    let videoStream;
+    try {
+      videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: nextFacing } } });
+    } catch {
+      try { videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: nextFacing } }); } catch { setBanner("The other camera is not available on this device."); return; }
+    }
+    const nextTrack = videoStream.getVideoTracks()[0];
+    const currentTrack = localStream.getVideoTracks()[0];
+    if (!nextTrack || !currentTrack) { videoStream.getTracks().forEach((track) => track.stop()); return; }
+    localStream.removeTrack(currentTrack);
+    currentTrack?.stop();
+    localStream.addTrack(nextTrack);
+    await replaceVideoTrackForAllPeers(nextTrack);
+    setCameraFacing(nextFacing);
   }
   function leave() { navigate("/rooms"); }
   function sendMessage() {
@@ -290,12 +309,12 @@ export default function GroupRoom() {
           <MusicPlayerBoundary music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />
           <div className={`relative z-20 grid ${gridCols} gap-2 sm:gap-3 flex-1 content-start animate-enter`}>
             <div className="relative">
-              <VideoTile stream={localStream} muted mirrored label={displayName.current} role={role} />
+              <VideoTile stream={localStream} muted mirrored label={displayName.current} avatarUrl={getAvatarUrl()} role={role} />
               {isModerator && <span className="absolute top-3 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">HOST / MOD</span>}
             </div>
             {visiblePeers.map((peer) => (
               <div key={peer.socketId} className="relative z-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[60]">
-                <VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName || "Guest"} role={peer.role || "user"} />
+                <VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName || "Guest"} avatarUrl={peer.avatarUrl} role={peer.role || "user"} />
                 {peer.isModerator && <span className="absolute top-11 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">HOST / MOD</span>}
                 {role === "user" && (peer.role || "user") === "user" && <button onClick={() => setReportTargetId(peer.socketId)} className="absolute top-2 left-2 z-10 rounded-md border border-coral/30 bg-black/75 px-2.5 py-1 text-[11px] font-medium text-coral backdrop-blur hover:bg-coral/20">Report</button>}
                 {mutedPeers.has(peer.socketId) && <span className="absolute top-20 left-2 z-10 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}
@@ -308,6 +327,7 @@ export default function GroupRoom() {
           <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
             <IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton>
             <IconButton onClick={toggleCam} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton>
+            <IconButton onClick={flipCamera} disabled={!camOn} active={false} label="Switch front and rear camera">↔</IconButton>
             <button onClick={leave} className="px-5 sm:px-6 py-3 rounded-full bg-coral text-ink font-display font-semibold text-sm hover:brightness-110 active:scale-95 transition shadow-lg shadow-coral/10 shrink-0">Leave room</button>
           </div>
         </div>

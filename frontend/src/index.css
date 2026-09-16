@@ -168,6 +168,20 @@ button:disabled {
   box-shadow: 0 0 12px rgba(157, 141, 241, 0.12);
 }
 
+@keyframes premiumNameShimmer {
+  0%, 100% { text-shadow: 0 0 0 rgba(196, 181, 253, 0); }
+  50% { text-shadow: 0 0 14px rgba(196, 181, 253, 0.75); }
+}
+
+.role-name-premium {
+  color: #ddd6fe !important;
+  animation: premiumNameShimmer 2.8s ease-in-out infinite;
+}
+
+.role-name-developer {
+  color: #fde68a !important;
+}
+
 
 /* =========================================================
    VOICE WAVE

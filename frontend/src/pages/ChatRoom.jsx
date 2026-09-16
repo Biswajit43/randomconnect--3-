@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { socket, getFingerprint, getDisplayName, getPremiumToken } from "../lib/socket.js";
+import { socket, getFingerprint, getDisplayName, getPremiumToken, getAvatarUrl } from "../lib/socket.js";
 import { useWebRTC } from "../hooks/useWebRTC.js";
 import VideoTile from "../components/VideoTile.jsx";
 import Controls from "../components/Controls.jsx";
@@ -19,12 +19,14 @@ export default function ChatRoom() {
   const [phase, setPhase] = useState("connecting-media"); // connecting-media | queued | matched | blocked
   const [queuePosition, setQueuePosition] = useState(null);
   const [partnerName, setPartnerName] = useState("Stranger");
+  const [partnerAvatarUrl, setPartnerAvatarUrl] = useState("");
+  const [cameraFacing, setCameraFacing] = useState("user");
   const [roomId, setRoomId] = useState(null);
   const [blockedReason, setBlockedReason] = useState(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [role, setRole] = useState(() => localStorage.getItem("rc_staff_role") || "user");
 
-  const { remoteStream, connectionState, startCall, endCall, addVideoTrack } = useWebRTC({ localStream });
+  const { remoteStream, connectionState, startCall, endCall, addVideoTrack, replaceVideoTrack } = useWebRTC({ localStream });
   const mediaRequested = useRef(false);
   const localStreamRef = useRef(null); // mirrors localStream for use in cleanup, which otherwise closes over a stale null
 
@@ -46,7 +48,7 @@ export default function ChatRoom() {
         localStreamRef.current = stream;
         setLocalStream(stream);
         socket.connect();
-        socket.emit("identify", { fingerprint: getFingerprint(), displayName: getDisplayName(), ageConfirmed: true, premiumToken: getPremiumToken() });
+        socket.emit("identify", { fingerprint: getFingerprint(), displayName: getDisplayName(), ageConfirmed: true, premiumToken: getPremiumToken(), avatarUrl: getAvatarUrl() });
       })
       .catch(() => {
         setPhase("blocked");
@@ -75,9 +77,10 @@ export default function ChatRoom() {
       setRole(identity?.role || "user");
       joinQueue();
     }
-    function onMatchFound({ roomId, initiator, partnerDisplayName }) {
+    function onMatchFound({ roomId, initiator, partnerDisplayName, partnerAvatarUrl: nextAvatar }) {
       setRoomId(roomId);
       setPartnerName(partnerDisplayName || "Stranger");
+      setPartnerAvatarUrl(nextAvatar || "");
       setPhase("matched");
       startCall(roomId, initiator);
     }
@@ -85,6 +88,7 @@ export default function ChatRoom() {
       endCall();
       setRoomId(null);
       setPartnerName("Stranger");
+      setPartnerAvatarUrl("");
       setPhase("queued");
       socket.emit("queue:join", { interests });
     }
@@ -120,7 +124,7 @@ export default function ChatRoom() {
     if (existingVideoTracks.length === 0) {
       // First time enabling — camera was never requested at join, by design.
       try {
-        const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraFacing } });
         const track = videoStream.getVideoTracks()[0];
         localStream.addTrack(track);
         if (phase === "matched") await addVideoTrack(track, localStream);
@@ -134,11 +138,30 @@ export default function ChatRoom() {
     existingVideoTracks.forEach((t) => (t.enabled = next));
     setCamOn(next);
   }
+  async function flipCamera() {
+    if (!camOn || !localStream) return;
+    const nextFacing = cameraFacing === "user" ? "environment" : "user";
+    let videoStream;
+    try {
+      videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: nextFacing } } });
+    } catch {
+      try { videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: nextFacing } }); } catch { alert("The other camera is not available on this device."); return; }
+    }
+    const nextTrack = videoStream.getVideoTracks()[0];
+    const currentTrack = localStream.getVideoTracks()[0];
+    if (!nextTrack || !currentTrack) { videoStream.getTracks().forEach((track) => track.stop()); return; }
+    localStream.removeTrack(currentTrack);
+    currentTrack?.stop();
+    localStream.addTrack(nextTrack);
+    await replaceVideoTrack(nextTrack);
+    setCameraFacing(nextFacing);
+  }
   function skip() {
     endCall();
     socket.emit("session:skip");
     setRoomId(null);
     setPartnerName("Stranger");
+    setPartnerAvatarUrl("");
     setPhase("queued");
     socket.emit("queue:join", { interests });
   }
@@ -187,8 +210,8 @@ export default function ChatRoom() {
         <div className="flex flex-col gap-4 min-h-0">
           {phase === "matched" ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 animate-enter">
-              <VideoTile stream={remoteStream} label={partnerName} />
-              <VideoTile stream={localStream} muted mirrored label={`You (${getDisplayName() || "Guest"})`} />
+              <VideoTile stream={remoteStream} label={partnerName} avatarUrl={partnerAvatarUrl} />
+              <VideoTile stream={localStream} muted mirrored label={`You (${getDisplayName() || "Guest"})`} avatarUrl={getAvatarUrl()} />
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center bg-panel/40 rounded-2xl border border-white/5 surface-lift">
@@ -209,6 +232,7 @@ export default function ChatRoom() {
             camOn={camOn}
             onToggleMic={toggleMic}
             onToggleCam={toggleCam}
+            onFlipCamera={flipCamera}
             onSkip={skip}
             onStop={stop}
             onReport={role === "user" ? () => setReportOpen(true) : null}

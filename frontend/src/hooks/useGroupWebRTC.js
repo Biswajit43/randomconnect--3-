@@ -100,6 +100,13 @@ export function useGroupWebRTC({ localStream }) {
     }
   }, []);
 
+  const replaceVideoTrackForAllPeers = useCallback(async (track) => {
+    for (const pc of peersRef.current.values()) {
+      const sender = pc.getSenders().find((item) => item.track?.kind === "video");
+      if (sender) await sender.replaceTrack(track);
+    }
+  }, []);
+
   // The microphone can finish loading after the room has joined. Add any
   // missing local tracks to existing connections and renegotiate them once.
   const syncLocalTracks = useCallback(async () => {
@@ -179,5 +186,5 @@ export function useGroupWebRTC({ localStream }) {
     };
   }, [createPeer, removePeer]);
 
-  return { remoteStreams, connectionStates, connectToExistingPeer, removePeer, setRoomId, closeAll, addVideoTrackToAllPeers };
+  return { remoteStreams, connectionStates, connectToExistingPeer, removePeer, setRoomId, closeAll, addVideoTrackToAllPeers, replaceVideoTrackForAllPeers };
 }
