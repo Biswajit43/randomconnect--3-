@@ -208,7 +208,9 @@ export default function Rooms() {
           </div>
 
           {loading ? (
-            <p className="text-mist text-sm font-mono">Loading rooms…</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" aria-label="Loading rooms">
+              {[0, 1, 2].map((item) => <RoomSkeleton key={item} />)}
+            </div>
           ) : rooms.length === 0 ? (
             <div className="bg-panel/40 border border-dashed border-white/10 rounded-2xl p-10 text-center">
               <p className="text-mist mb-3">No rooms yet — be the first to start one.</p>
@@ -230,6 +232,17 @@ export default function Rooms() {
       </main>
 
       <CreateRoomModal open={modalOpen} onClose={() => setModalOpen(false)} onCreate={handleCreate} creating={creating} />
+    </div>
+  );
+}
+
+function RoomSkeleton() {
+  return (
+    <div className="rounded-2xl border border-white/5 bg-panel/60 p-4 animate-pulse" aria-hidden="true">
+      <div className="h-3 w-24 rounded bg-white/10" />
+      <div className="mt-3 h-5 w-2/3 rounded bg-white/10" />
+      <div className="mt-2 h-3 w-full rounded bg-white/5" />
+      <div className="mt-5 h-3 w-28 rounded bg-white/10" />
     </div>
   );
 }

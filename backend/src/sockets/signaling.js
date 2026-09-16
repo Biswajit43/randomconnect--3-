@@ -3,6 +3,9 @@ import { matchmaker } from "../services/matchmaker.js";
 import { isBanned, hashIp, fileReport, autoBanOnRepeatedReports } from "../services/moderation.js";
 import { adminSessionFromToken, deviceTokenFromCookieHeader, hashDeviceToken, staffAccountFromSession } from "../services/adminAuth.js";
 import AdminDevice from "../models/AdminDevice.js";
+import { allowAction } from "../services/abuse.js";
+import { noteIdentity, noteJoin } from "../services/presence.js";
+import Room from "../models/Room.js";
 
 // roomId -> { members: [socketId, socketId], fingerprints: {socketId: fp} }
 const activeRooms = new Map();
@@ -73,6 +76,11 @@ export function registerSignaling(io) {
         }
 
         socket.data.fingerprint = fingerprint || uuid();
+        if (!allowAction(`identify:${ipHash}`, { limit: 12, windowMs: 10 * 60 * 1000 })) {
+          socket.emit("blocked", { reason: "rate_limited" });
+          socket.disconnect(true);
+          return;
+        }
         const requestedName = (displayName || "").trim().slice(0, 30);
         socket.data.displayName = socket.data.role === "developer"
           ? socket.data.staffDisplayName || "Developer"
@@ -87,6 +95,8 @@ export function registerSignaling(io) {
           return;
         }
 
+        noteIdentity(socket);
+
         socket.emit("identified", { ok: true, displayName: socket.data.displayName, role: socket.data.role });
       } catch (err) {
         // identify() is the entry point for both the 1-to-1 flow and group
@@ -99,6 +109,10 @@ export function registerSignaling(io) {
 
     socket.on("queue:join", ({ interests = [] } = {}) => {
       if (!socket.data.fingerprint) return; // must identify() first
+      if (!allowAction(`queue:${socket.data.ipHash}:${socket.data.fingerprint}`, { limit: 8, windowMs: 60 * 1000 })) {
+        socket.emit("queue:waiting", { position: 0, rateLimited: true });
+        return;
+      }
       if (socket.data.roomId) leaveRoom(io, socket);
 
       const entry = { socketId: socket.id, interests, joinedAt: Date.now() };
@@ -114,6 +128,8 @@ export function registerSignaling(io) {
         }
 
         socket.data.roomId = roomId;
+        noteJoin(socket);
+        noteJoin(partnerSocket);
         partnerSocket.data.roomId = roomId;
         activeRooms.set(roomId, { members: [socket.id, partnerSocket.id] });
 
@@ -156,6 +172,10 @@ export function registerSignaling(io) {
     });
 
     socket.on("report:user", async ({ roomId, reason, details } = {}, acknowledge) => {
+      if (!allowAction(`report:${socket.data.ipHash}:${socket.data.fingerprint}`, { limit: 5, windowMs: 60 * 60 * 1000 })) {
+        acknowledge?.({ ok: false, error: "Too many reports. Please try again later." });
+        return;
+      }
       const partner = getPartner(io, socket.id, roomId);
       if (!partner || socket.data.roomId !== roomId || !socket.data.fingerprint || !partner.data.fingerprint) {
         acknowledge?.({ ok: false });
@@ -163,9 +183,13 @@ export function registerSignaling(io) {
       }
 
       try {
+        const room = await Room.findById(roomId).select("name").lean();
         await fileReport({
           reporterFingerprint: socket.data.fingerprint,
           reportedFingerprint: partner.data.fingerprint,
+          reportedDisplayName: partner.data.displayName,
+          reportedIpHash: partner.data.ipHash,
+          reportedRoomName: room?.name,
           roomId,
           reason: typeof reason === "string" ? reason.slice(0, 80) : "other",
           details: typeof details === "string" ? details.slice(0, 1000) : "",

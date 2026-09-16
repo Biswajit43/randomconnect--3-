@@ -9,6 +9,9 @@ const reportSchema = new mongoose.Schema(
 	{
 		reporterFingerprint: { type: String, required: true, index: true },
 		reportedFingerprint: { type: String, required: true, index: true },
+		reportedDisplayName: { type: String, default: "" },
+		reportedIpHash: { type: String, default: "" },
+		reportedRoomName: { type: String, default: "" },
 		roomId: { type: String, required: true },
 		reason: { type: String, required: true },
 		details: { type: String, maxlength: 1000 },

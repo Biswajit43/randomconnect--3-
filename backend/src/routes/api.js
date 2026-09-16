@@ -1,11 +1,14 @@
 import { Router } from "express";
 import Report from "../models/Report.js";
+import BannedUser from "../models/BannedUser.js";
+import AuditLog from "../models/AuditLog.js";
 import Room from "../models/Room.js";
 import AdminDevice from "../models/AdminDevice.js";
 import { matchmaker } from "../services/matchmaker.js";
 import { roomState } from "../services/roomState.js";
 import { containsProfanity } from "../utils/profanityFilter.js";
-import { connectedUsers } from "../services/presence.js";
+import { connectedUsers, adminPresence, abuseSignals, disconnectMatching } from "../services/presence.js";
+import { recordAudit } from "../services/audit.js";
 import {
   ADMIN_COOKIE,
   ADMIN_SESSION_MS,
@@ -90,6 +93,7 @@ async function requireAdmin(req, res, next) {
     console.error("[api] admin device check failed:", err.message);
     return res.status(503).json({ error: "Admin authentication is temporarily unavailable" });
   }
+  req.adminSession = getAdminSessionFromCookieHeader(req.headers.cookie || "");
   await touchAdminDevice(req.headers.cookie || "");
   next();
 }
@@ -160,6 +164,40 @@ router.post("/admin/logout", asyncRoute(async (req, res) => {
 }));
 
 router.get("/admin/session", requireAdmin, (req, res) => res.json({ authenticated: true, role: getAdminRole(req) }));
+
+router.get("/admin/audit", requireAdmin, asyncRoute(async (_req, res) => {
+  res.json(await AuditLog.find().sort({ createdAt: -1 }).limit(200).lean());
+}));
+
+router.get("/admin/bans", requireAdmin, asyncRoute(async (_req, res) => {
+  res.json(await BannedUser.find().sort({ createdAt: -1 }).limit(200).lean());
+}));
+
+router.post("/admin/bans", requireAdmin, asyncRoute(async (req, res) => {
+  const { fingerprint, ipHash, reason, duration } = req.body || {};
+  if (!fingerprint && !ipHash) return res.status(400).json({ error: "A user/device or IP target is required" });
+  if (ipHash && String(ipHash).length !== 64) return res.status(400).json({ error: "Invalid IP target" });
+  const allowedDurations = { "5m": 5, "10m": 10, "30m": 30, "1h": 60, permanent: null };
+  if (!Object.hasOwn(allowedDurations, duration)) return res.status(400).json({ error: "Invalid ban duration" });
+  const minutes = allowedDurations[duration];
+  const ban = await BannedUser.create({
+    fingerprint: fingerprint ? String(fingerprint).slice(0, 200) : undefined,
+    ipHash: ipHash || undefined,
+    reason: String(reason || "Admin moderation action").slice(0, 500),
+    createdBy: req.adminSession?.accountId || "admin",
+    expiresAt: minutes === null ? null : new Date(Date.now() + minutes * 60 * 1000),
+  });
+  const disconnected = disconnectMatching({ fingerprint, ipHash });
+  await recordAudit({ action: "ban.created", actor: req.adminSession, targetId: fingerprint || ipHash, metadata: { duration, disconnected } });
+  res.status(201).json({ ...ban.toObject(), disconnected });
+}));
+
+router.delete("/admin/bans/:id", requireAdmin, asyncRoute(async (req, res) => {
+  const ban = await BannedUser.findByIdAndDelete(req.params.id).lean();
+  if (!ban) return res.status(404).json({ error: "Ban not found" });
+  await recordAudit({ action: "ban.removed", actor: req.adminSession, targetId: ban.fingerprint || ban.ipHash });
+  res.json({ ok: true });
+}));
 
 // --- Group rooms -----------------------------------------------------------
 
@@ -294,9 +332,15 @@ router.get(
   asyncRoute(async (_req, res) => {
     const rooms = await Room.find().sort({ lastActiveAt: -1 }).limit(100).lean();
     const liveCounts = roomState.liveCounts();
+    const members = adminPresence();
     res.json(rooms.map((room) => ({
       ...room,
       activeCount: liveCounts[room._id.toString()] || 0,
+      members: (members[room._id.toString()] || []).map((member) => ({
+        name: member.name,
+        role: member.role,
+        signals: abuseSignals(member.fingerprint, member.ipHash),
+      })),
     })));
   })
 );
@@ -320,9 +364,33 @@ router.delete(
     const room = await Room.findByIdAndDelete(req.params.id).lean();
     if (!room) return res.status(404).json({ error: "Room not found" });
     roomState.removeRoom(req.params.id);
+    await recordAudit({ action: "room.deleted", actor: req.adminSession, roomId: req.params.id, metadata: { name: room.name } });
     res.json({ ok: true, warning: "Room deleted by an administrator." });
   })
 );
+
+router.patch("/admin/rooms/:id", requireAdmin, asyncRoute(async (req, res) => {
+  const { name, topic } = req.body || {};
+  const room = await Room.findById(req.params.id);
+  if (!room) return res.status(404).json({ error: "Room not found" });
+  if (name !== undefined) {
+    if (!String(name).trim() || containsProfanity(name)) return res.status(400).json({ error: "Invalid room name" });
+    room.name = String(name).trim().slice(0, 60);
+  }
+  if (topic !== undefined) room.topic = String(topic).trim().slice(0, 140);
+  await room.save();
+  await recordAudit({ action: "room.updated", actor: req.adminSession, roomId: req.params.id, metadata: { name: room.name, topic: room.topic } });
+  res.json(room);
+}));
+
+router.post("/admin/rooms/:id/remove-all", requireAdmin, asyncRoute(async (req, res) => {
+  if (req.body?.confirm !== true) return res.status(400).json({ error: "Explicit confirmation is required" });
+  const memberList = adminPresence()[req.params.id] || [];
+  for (const member of memberList) disconnectMatching({ fingerprint: member.fingerprint });
+  roomState.removeRoom(req.params.id);
+  await recordAudit({ action: "room.members_removed", actor: req.adminSession, roomId: req.params.id, metadata: { count: memberList.length } });
+  res.json({ ok: true, removed: memberList.length });
+}));
 
 // Admin report endpoints are protected by the server-side session above.
 router.get(
@@ -330,8 +398,17 @@ router.get(
   requireAdmin,
   asyncRoute(async (req, res) => {
     const status = req.query.status || "pending";
-    const reports = await Report.find({ status }).sort({ severity: -1, createdAt: -1 }).limit(100);
-    res.json(reports);
+    const reports = await Report.find({ status }).sort({ severity: -1, createdAt: -1 }).limit(100).lean();
+    const counts = await Report.aggregate([
+      { $match: { status: { $in: ["pending", "reviewed"] } } },
+      { $group: { _id: "$reportedFingerprint", reportCount: { $sum: 1 } } },
+    ]);
+    const countByFingerprint = new Map(counts.map((item) => [item._id, item.reportCount]));
+    res.json(reports.map((report) => ({
+      ...report,
+      reportCount: countByFingerprint.get(report.reportedFingerprint) || 1,
+      signals: abuseSignals(report.reportedFingerprint, report.reportedIpHash),
+    })));
   })
 );
 
@@ -345,10 +422,11 @@ router.patch(
     }
     const report = await Report.findByIdAndUpdate(
       req.params.id,
-      { status, reviewedAt: new Date(), reviewedBy: "admin" },
+      { status, reviewedAt: new Date(), reviewedBy: req.adminSession?.accountId || "admin" },
       { new: true }
     );
     if (!report) return res.status(404).json({ error: "Report not found" });
+    await recordAudit({ action: `report.${status}`, actor: req.adminSession, targetId: report.reportedFingerprint, roomId: report.roomId, metadata: { reportId: report._id.toString() } });
     res.json(report);
   })
 );

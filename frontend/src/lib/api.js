@@ -34,4 +34,10 @@ export const api = {
   adminRooms: () => request("/admin/rooms"),
   adminUsage: () => request("/admin/usage"),
   deleteAdminRoom: (id) => request(`/admin/rooms/${id}`, { method: "DELETE" }),
+  updateAdminRoom: (id, payload) => request(`/admin/rooms/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  removeAllAdminMembers: (id) => request(`/admin/rooms/${id}/remove-all`, { method: "POST", body: JSON.stringify({ confirm: true }) }),
+  adminBans: () => request("/admin/bans"),
+  createAdminBan: (payload) => request("/admin/bans", { method: "POST", body: JSON.stringify(payload) }),
+  removeAdminBan: (id) => request(`/admin/bans/${id}`, { method: "DELETE" }),
+  adminAudit: () => request("/admin/audit"),
 };

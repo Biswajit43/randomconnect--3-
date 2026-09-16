@@ -10,6 +10,7 @@ const bannedUserSchema = new mongoose.Schema(
 		fingerprint: { type: String, index: true },
 		ipHash: { type: String, index: true },
 		reason: { type: String, required: true },
+		createdBy: { type: String, default: "system" },
 		reportIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Report" }],
 		expiresAt: { type: Date, default: null },
 		createdAt: { type: Date, default: Date.now },

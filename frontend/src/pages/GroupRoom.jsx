@@ -31,7 +31,7 @@ export default function GroupRoom() {
   const localStreamRef = useRef(null);
   const mediaRequested = useRef(false);
   const identifySent = useRef(false);
-  const { remoteStreams, connectToExistingPeer, setRoomId, closeAll, addVideoTrackToAllPeers } = useGroupWebRTC({ localStream });
+  const { remoteStreams, connectionStates, connectToExistingPeer, setRoomId, closeAll, addVideoTrackToAllPeers } = useGroupWebRTC({ localStream });
 
   useEffect(() => {
     if (!getDisplayName()) navigate("/", { state: { returnTo: `/rooms/${roomId}` } });
@@ -170,7 +170,8 @@ export default function GroupRoom() {
 
   async function toggleMic() {
     if (forceMuted) return;
-    if (!localStream) {
+    const existingAudioTrack = localStream?.getAudioTracks?.().find((track) => track.readyState === "live");
+    if (!existingAudioTrack) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
         stream.getAudioTracks().forEach((track) => { track.enabled = true; });
@@ -231,6 +232,8 @@ export default function GroupRoom() {
   const visiblePeers = peers.filter((peer) => peer && typeof peer === "object");
   const visibleWaiting = waitingList.filter((person) => person && typeof person === "object");
   const visibleMessages = messages.filter((message) => message && typeof message === "object");
+  const hasConnectionIssue = Object.values(connectionStates).some((state) => ["disconnected", "connecting", "new"].includes(state));
+  const hasLiveAudio = Boolean(localStream?.getAudioTracks?.().some((track) => track.readyState === "live"));
   const gridCols = totalTiles <= 2 ? "grid-cols-1 sm:grid-cols-2" : totalTiles <= 4 ? "grid-cols-2" : "grid-cols-2 md:grid-cols-3";
   return (
     <div className="min-h-screen flex flex-col px-3 sm:px-4 md:px-8 py-3 sm:py-4">
@@ -243,9 +246,19 @@ export default function GroupRoom() {
           </h1>
           <p className="text-xs text-mist font-mono mt-1">{totalTiles} {totalTiles === 1 ? "person" : "people"} · live</p>
         </div>
-        <span className={`flex items-center gap-2 text-xs font-mono shrink-0 ${socketReady ? "text-signal2" : "text-coral"}`}><span className={`w-2 h-2 rounded-full ${socketReady ? "bg-signal animate-pulse" : "bg-coral"}`} />{socketReady ? "live" : "reconnecting"}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {!hasLiveAudio && <span className="hidden sm:inline text-xs font-mono text-amber-300">mic not connected</span>}
+          {hasConnectionIssue && <span className="hidden sm:inline text-xs font-mono text-amber-300">audio reconnecting</span>}
+          <span className={`flex items-center gap-2 text-xs font-mono ${socketReady ? "text-signal2" : "text-coral"}`}><span className={`w-2 h-2 rounded-full ${socketReady ? "bg-signal animate-pulse" : "bg-coral"}`} />{socketReady ? "live" : "reconnecting"}</span>
+        </div>
       </header>
       {banner && <div className={`mb-3 mx-auto max-w-[92%] px-4 py-2 rounded-xl text-sm font-mono text-center animate-enter ${banner.startsWith("◈") ? "role-entrance-developer" : "role-entrance-admin"}`}>{banner}</div>}
+      {phase === "joined" && (!hasLiveAudio || hasConnectionIssue) && (
+        <div className="mb-3 mx-auto flex max-w-2xl items-center justify-between gap-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-xs text-amber-100">
+          <span>{!hasLiveAudio ? "Your microphone is not connected yet. You can still listen, or tap the mic button to retry." : "Some audio connections are recovering. Stay in the room while we reconnect them."}</span>
+          {!hasLiveAudio && <button onClick={toggleMic} className="shrink-0 rounded-lg border border-amber-200/30 px-3 py-1.5 font-semibold hover:bg-amber-200/10">Retry mic</button>}
+        </div>
+      )}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 sm:gap-5 min-h-0">
         <div className="flex flex-col gap-3 sm:gap-4 min-h-0">
           <MusicPlayerBoundary music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />

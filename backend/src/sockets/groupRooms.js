@@ -1,6 +1,8 @@
 import { roomState } from "../services/roomState.js";
 import Room from "../models/Room.js";
 import { searchTrack, parseYouTubeId, getYouTubeMetadata } from "../services/musicService.js";
+import { allowAction } from "../services/abuse.js";
+import { noteJoin } from "../services/presence.js";
 
 /**
  * Group rooms use a full-mesh WebRTC topology: every participant opens a
@@ -96,6 +98,11 @@ export function registerGroupRooms(io) {
       safeHandler("group:join", async ({ roomId, displayName }) => {
         if (!socket.data.fingerprint) return; // must identify() first (see signaling.js)
 
+        if (!allowAction(`group:${socket.data.ipHash}:${socket.data.fingerprint}`, { limit: 12, windowMs: 60 * 1000 })) {
+          socket.emit("group:removed", { reason: "Too many join attempts. Please wait a moment." });
+          return;
+        }
+
         if (roomState.isKicked(roomId, socket.data.fingerprint)) {
           socket.emit("group:removed", { reason: "You were removed from this room." });
           return;
@@ -115,6 +122,7 @@ export function registerGroupRooms(io) {
           : await isModeratorOfRoom(roomId, socket.data.fingerprint);
 
         const existingPeerIds = roomState.join(roomId, socket.id, meta);
+        noteJoin(socket);
         socket.join(roomId);
         socket.data.groupRooms = socket.data.groupRooms || new Set();
         socket.data.groupRooms.add(roomId);

@@ -68,6 +68,25 @@ body::before {
   outline-offset: 2px;
 }
 
+button,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled) {
+  touch-action: manipulation;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+::placeholder {
+  opacity: 0.7;
+}
+
 
 /* =========================================================
    SPEAKING BORDER

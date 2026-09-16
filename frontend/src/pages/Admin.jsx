@@ -12,6 +12,8 @@ export default function Admin() {
   const [reports, setReports] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [usage, setUsage] = useState({ connectedUsers: 0, activeUsers: 0, activeRooms: 0, waitingUsers: 0 });
+  const [bans, setBans] = useState([]);
+  const [audit, setAudit] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -35,6 +37,17 @@ export default function Admin() {
       .catch((requestError) => setError(requestError.message))
       .finally(() => setBusy(false));
   }, [authenticated, status]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    const refreshSafety = () => {
+      api.adminBans().then(setBans).catch((requestError) => setError(requestError.message));
+      api.adminAudit().then(setAudit).catch((requestError) => setError(requestError.message));
+    };
+    refreshSafety();
+    const intervalId = window.setInterval(refreshSafety, 10000);
+    return () => window.clearInterval(intervalId);
+  }, [authenticated]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -80,6 +93,7 @@ export default function Admin() {
     setReports([]);
     setRooms([]);
     setUsage({ connectedUsers: 0, activeUsers: 0, activeRooms: 0, waitingUsers: 0 });
+    setBans([]); setAudit([]);
   }
 
   async function deleteRoom(room) {
@@ -90,6 +104,32 @@ export default function Admin() {
     } catch (requestError) {
       setError(requestError.message);
     }
+  }
+
+  async function editRoom(room) {
+    const name = window.prompt("New group name", room.name)?.trim();
+    if (!name || name === room.name) return;
+    try {
+      const updated = await api.updateAdminRoom(room._id, { name });
+      setRooms((current) => current.map((item) => item._id === room._id ? { ...item, ...updated } : item));
+    } catch (requestError) { setError(requestError.message); }
+  }
+
+  async function removeAllMembers(room) {
+    if (!window.confirm(`Remove all ${room.members?.length || room.activeCount} members from "${room.name}"?`)) return;
+    try {
+      await api.removeAllAdminMembers(room._id);
+      setRooms((current) => current.map((item) => item._id === room._id ? { ...item, activeCount: 0, members: [] } : item));
+    } catch (requestError) { setError(requestError.message); }
+  }
+
+  async function banReported(report) {
+    const duration = window.prompt("Ban duration: 5m, 10m, 30m, 1h, or permanent", "30m");
+    if (!duration || !["5m", "10m", "30m", "1h", "permanent"].includes(duration)) return;
+    try {
+      const ban = await api.createAdminBan({ fingerprint: report.reportedFingerprint, duration, reason: `Report: ${report.reason}` });
+      setBans((current) => [ban, ...current]);
+    } catch (requestError) { setError(requestError.message); }
   }
 
   if (checking) return <main className="min-h-screen grid place-items-center text-mist">Checking admin session...</main>;
@@ -143,10 +183,15 @@ export default function Admin() {
               <article key={room._id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-panel/80 p-4">
                 <div>
                   <p className="font-semibold text-white">{room.name}</p>
-                  <p className="mt-1 text-xs text-mist">{room.activeCount} / {room.maxParticipants} active · creator fingerprint {room.createdByFingerprint}</p>
+                  <p className="mt-1 text-xs text-mist">{room.activeCount} / {room.maxParticipants} active · creator ID {room.createdByFingerprint}</p>
                   <p className="mt-1 text-xs text-mist/70">Created {new Date(room.createdAt).toLocaleString()}</p>
+                  {room.members?.length > 0 && <p className="mt-2 text-xs text-signal2">Members: {room.members.map((member) => member.name).join(", ")}</p>}
                 </div>
-                <button onClick={() => deleteRoom(room)} className="rounded-lg bg-coral/15 px-3 py-2 text-xs font-semibold text-coral hover:bg-coral/25">Delete room</button>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => editRoom(room)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-mist hover:text-white">Edit name</button>
+                  <button onClick={() => removeAllMembers(room)} disabled={!room.activeCount} className="rounded-lg border border-coral/30 px-3 py-2 text-xs font-semibold text-coral hover:bg-coral/15 disabled:opacity-40">Remove all</button>
+                  <button onClick={() => deleteRoom(room)} className="rounded-lg bg-coral/15 px-3 py-2 text-xs font-semibold text-coral hover:bg-coral/25">Delete room</button>
+                </div>
               </article>
             ))}
           </div>
@@ -180,9 +225,11 @@ export default function Admin() {
                 <span className="rounded-full bg-coral/15 px-2 py-1 text-[11px] uppercase text-coral">{report.status}</span>
               </div>
               {report.details && <p className="mt-3 text-sm text-white/80">{report.details}</p>}
-              <p className="mt-3 break-all font-mono text-[11px] text-mist/70">Reported user: {report.reportedFingerprint}</p>
+              <p className="mt-3 font-mono text-[11px] text-mist/70">Reported user: {report.reportedDisplayName || "Unknown"} · ID {report.reportedFingerprint} · {report.reportCount} report(s)</p>
+              <p className="mt-1 text-xs text-mist">Signals: {report.signals?.ipMatchCount || 0} IP matches · {report.signals?.repeatedJoins || 0} repeated joins · {report.signals?.deviceSessionMatch ? "known device/session" : "new device/session"}</p>
               {status === "pending" && (
                 <div className="mt-4 flex gap-2">
+                  <button onClick={() => banReported(report)} className="rounded-lg bg-coral px-3 py-2 text-xs font-semibold text-white">Ban user</button>
                   <button onClick={() => updateReport(report._id, "reviewed")} className="rounded-lg bg-signal px-3 py-2 text-xs font-semibold text-ink">Mark reviewed</button>
                   <button onClick={() => updateReport(report._id, "dismissed")} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-mist hover:text-white">Dismiss</button>
                 </div>
@@ -190,6 +237,20 @@ export default function Admin() {
             </article>
           ))}
         </div>
+
+        <section className="mt-10 grid gap-6 lg:grid-cols-2">
+          <div>
+            <h2 className="font-display text-lg text-white">Active bans</h2>
+            <div className="mt-3 grid gap-2">
+              {bans.length === 0 && <p className="text-sm text-mist">No active bans.</p>}
+              {bans.map((ban) => <div key={ban._id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-panel/80 p-3 text-xs"><span className="text-mist">{ban.fingerprint || "IP target"} · {ban.expiresAt ? new Date(ban.expiresAt).toLocaleString() : "permanent"}</span><button onClick={() => api.removeAdminBan(ban._id).then(() => setBans((current) => current.filter((item) => item._id !== ban._id)))} className="text-signal2 hover:text-white">Remove</button></div>)}
+            </div>
+          </div>
+          <div>
+            <h2 className="font-display text-lg text-white">Audit log</h2>
+            <div className="mt-3 max-h-52 space-y-2 overflow-auto">{audit.map((entry) => <p key={entry._id} className="text-xs text-mist"><span className="text-white">{entry.action}</span> · {entry.actorId} · {new Date(entry.createdAt).toLocaleString()}</p>)}</div>
+          </div>
+        </section>
       </section>
     </main>
   );

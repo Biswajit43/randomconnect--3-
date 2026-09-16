@@ -13,7 +13,9 @@ const ICE_SERVERS = buildIceServers();
  */
 export function useGroupWebRTC({ localStream }) {
   const [remoteStreams, setRemoteStreams] = useState({}); // socketId -> MediaStream
+  const [connectionStates, setConnectionStates] = useState({});
   const peersRef = useRef(new Map()); // socketId -> RTCPeerConnection
+  const negotiatingRef = useRef(new Set());
   const roomIdRef = useRef(null);
 
   const createPeer = useCallback(
@@ -31,7 +33,8 @@ export function useGroupWebRTC({ localStream }) {
       };
 
       pc.onconnectionstatechange = () => {
-        if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
+        setConnectionStates((current) => ({ ...current, [peerId]: pc.connectionState }));
+        if (["failed", "closed"].includes(pc.connectionState)) {
           removePeer(peerId);
         }
       };
@@ -51,12 +54,18 @@ export function useGroupWebRTC({ localStream }) {
       delete next[peerId];
       return next;
     });
+    negotiatingRef.current.delete(peerId);
+    setConnectionStates((current) => {
+      const next = { ...current };
+      delete next[peerId];
+      return next;
+    });
   }, []);
 
   // Called for each peer already in the room when we join — we initiate.
   const connectToExistingPeer = useCallback(
     async (peerId) => {
-      const pc = createPeer(peerId);
+      const pc = peersRef.current.get(peerId) || createPeer(peerId);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       socket.emit("group:webrtc-offer", { roomId: roomIdRef.current, targetId: peerId, sdp: offer });
@@ -72,6 +81,8 @@ export function useGroupWebRTC({ localStream }) {
     peersRef.current.forEach((pc) => pc.close());
     peersRef.current.clear();
     setRemoteStreams({});
+    setConnectionStates({});
+    negotiatingRef.current.clear();
   }, []);
 
   /**
@@ -89,6 +100,34 @@ export function useGroupWebRTC({ localStream }) {
     }
   }, []);
 
+  // The microphone can finish loading after the room has joined. Add any
+  // missing local tracks to existing connections and renegotiate them once.
+  const syncLocalTracks = useCallback(async () => {
+    if (!localStream) return;
+    for (const [peerId, pc] of peersRef.current.entries()) {
+      if (pc.signalingState === "closed") continue;
+      const senderKinds = new Set(pc.getSenders().map((sender) => sender.track?.kind).filter(Boolean));
+      const missingTracks = localStream.getTracks().filter((track) => !senderKinds.has(track.kind));
+      if (!missingTracks.length) continue;
+      missingTracks.forEach((track) => pc.addTrack(track, localStream));
+      if (pc.signalingState !== "stable" || negotiatingRef.current.has(peerId)) continue;
+      negotiatingRef.current.add(peerId);
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit("group:webrtc-offer", { roomId: roomIdRef.current, targetId: peerId, sdp: offer });
+      } catch (error) {
+        console.warn("local track renegotiation failed", error);
+      } finally {
+        negotiatingRef.current.delete(peerId);
+      }
+    }
+  }, [localStream]);
+
+  useEffect(() => {
+    syncLocalTracks();
+  }, [syncLocalTracks]);
+
   useEffect(() => {
     async function onOffer({ roomId, fromId, sdp }) {
       // Reuse the existing connection if one's already open — this is what
@@ -103,7 +142,13 @@ export function useGroupWebRTC({ localStream }) {
 
     async function onAnswer({ fromId, sdp }) {
       const pc = peersRef.current.get(fromId);
-      if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      if (pc) {
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        } catch (error) {
+          console.warn("setRemoteDescription(answer) failed", error);
+        }
+      }
     }
 
     async function onIceCandidate({ fromId, candidate }) {
@@ -134,5 +179,5 @@ export function useGroupWebRTC({ localStream }) {
     };
   }, [createPeer, removePeer]);
 
-  return { remoteStreams, connectToExistingPeer, removePeer, setRoomId, closeAll, addVideoTrackToAllPeers };
+  return { remoteStreams, connectionStates, connectToExistingPeer, removePeer, setRoomId, closeAll, addVideoTrackToAllPeers };
 }

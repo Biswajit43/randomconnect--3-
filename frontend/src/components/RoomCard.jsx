@@ -6,8 +6,10 @@ export default function RoomCard({ room, onJoin }) {
   return (
     <button
       onClick={() => onJoin(room)}
-      className="w-full text-left bg-panel/80 hover:bg-panel2 border border-white/5 hover:border-signal/40 rounded-2xl p-4 interactive-lift group"
+      aria-label={`Join ${room.name}`}
+      className="relative w-full overflow-hidden text-left bg-panel/80 hover:bg-panel2 border border-white/5 hover:border-signal/40 rounded-2xl p-4 interactive-lift group focus-visible:ring-2 focus-visible:ring-signal/70"
     >
+      <span className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-signal/10 blur-3xl opacity-0 transition duration-300 group-hover:opacity-100" />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-mono tracking-wider text-mist uppercase truncate">
@@ -26,6 +28,7 @@ export default function RoomCard({ room, onJoin }) {
         <span className={isLive ? "text-signal2" : "text-mist/60"}>
           {isLive ? `live · ${room.liveCount} ${room.liveCount === 1 ? "person" : "people"}` : "empty — be first in"}
         </span>
+        <span className="ml-auto text-mist/60 opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100">Join →</span>
       </div>
     </button>
   );

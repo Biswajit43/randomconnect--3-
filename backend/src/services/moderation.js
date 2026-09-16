@@ -50,14 +50,17 @@ export async function moderateFrame(_frameBuffer) {
   return { flagged: false, categories: [] };
 }
 
-export async function fileReport({ reporterFingerprint, reportedFingerprint, roomId, reason, details }) {
+export async function fileReport({ reporterFingerprint, reportedFingerprint, reportedDisplayName, reportedIpHash, reportedRoomName, roomId, reason, details }) {
   const severity = ["minor_endangerment", "nudity_sexual_content"].includes(reason)
     ? "critical"
     : "medium";
 
   const report = await Report.create({
     reporterFingerprint,
-    reportedFingerprint,
+		reportedFingerprint,
+		reportedDisplayName: String(reportedDisplayName || "").slice(0, 30),
+		reportedIpHash: reportedIpHash || "",
+		reportedRoomName: String(reportedRoomName || "").slice(0, 60),
     roomId,
     reason,
     details,
@@ -85,6 +88,7 @@ export async function autoBanOnRepeatedReports(reportedFingerprint, ipHash) {
       fingerprint: reportedFingerprint,
       ipHash,
       reason: `Auto-ban: ${recentCritical} critical reports in 24h`,
+			createdBy: "system",
       expiresAt: null,
     }).catch(() => {});
     return true;
