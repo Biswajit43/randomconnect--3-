@@ -67,6 +67,15 @@ export default function GroupRoom() {
   useEffect(() => setRoomId(roomId), [roomId, setRoomId]);
 
   useEffect(() => {
+    if (phase !== "connecting-media") return undefined;
+    const timeout = window.setTimeout(() => {
+      setBlockedReason("server_error");
+      setPhase("blocked");
+    }, 20000);
+    return () => window.clearTimeout(timeout);
+  }, [phase]);
+
+  useEffect(() => {
     if (mediaRequested.current) return;
     mediaRequested.current = true;
     const connectRoom = () => {

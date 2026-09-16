@@ -378,7 +378,14 @@ export function registerGroupRooms(io) {
       safeHandler("group:join", async ({ roomId, displayName }) => {
         if (!socket.data.fingerprint) return; // must identify() first (see signaling.js)
 
-        const room = await Room.findById(roomId).select("maxParticipants").lean();
+        let room;
+        try {
+          room = await Room.findById(roomId).select("maxParticipants").lean();
+        } catch (error) {
+          console.error("[groupRooms] room capacity check failed:", error.message);
+          socket.emit("group:join-rejected", { reason: "server_error" });
+          return;
+        }
         if (!room) {
           socket.emit("group:join-rejected", { reason: "room_not_found" });
           return;
