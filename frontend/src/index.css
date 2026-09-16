@@ -138,9 +138,10 @@ button:disabled {
 }
 
 .role-badge-admin {
-  color: #e8e1ff;
-  background: rgba(104, 88, 170, 0.8);
-  border: 1px solid rgba(190, 177, 255, 0.35);
+  color: #effcff;
+  background: linear-gradient(135deg, rgba(37, 130, 156, 0.94), rgba(104, 88, 170, 0.9));
+  border: 1px solid rgba(157, 231, 255, 0.55);
+  box-shadow: 0 0 16px rgba(76, 201, 240, 0.2);
 }
 
 .role-premium {

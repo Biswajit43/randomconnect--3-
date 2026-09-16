@@ -29,7 +29,11 @@ export function useGroupWebRTC({ localStream }) {
       };
 
       pc.ontrack = (e) => {
-        setRemoteStreams((prev) => ({ ...prev, [peerId]: e.streams[0] }));
+        setRemoteStreams((prev) => {
+          const incoming = e.streams?.[0] || prev[peerId] || new MediaStream();
+          if (!incoming.getTracks().includes(e.track)) incoming.addTrack(e.track);
+          return { ...prev, [peerId]: incoming };
+        });
       };
 
       pc.onconnectionstatechange = () => {

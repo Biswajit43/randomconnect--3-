@@ -19,6 +19,7 @@ export default function ChatRoom() {
   const [phase, setPhase] = useState("connecting-media"); // connecting-media | queued | matched | blocked
   const [queuePosition, setQueuePosition] = useState(null);
   const [partnerName, setPartnerName] = useState("Stranger");
+  const [partnerRole, setPartnerRole] = useState("user");
   const [partnerAvatarUrl, setPartnerAvatarUrl] = useState("");
   const [cameraFacing, setCameraFacing] = useState("user");
   const [roomId, setRoomId] = useState(null);
@@ -77,9 +78,10 @@ export default function ChatRoom() {
       setRole(identity?.role || "user");
       joinQueue();
     }
-    function onMatchFound({ roomId, initiator, partnerDisplayName, partnerAvatarUrl: nextAvatar }) {
+    function onMatchFound({ roomId, initiator, partnerDisplayName, partnerRole: nextRole, partnerAvatarUrl: nextAvatar }) {
       setRoomId(roomId);
       setPartnerName(partnerDisplayName || "Stranger");
+      setPartnerRole(nextRole || "user");
       setPartnerAvatarUrl(nextAvatar || "");
       setPhase("matched");
       startCall(roomId, initiator);
@@ -88,6 +90,7 @@ export default function ChatRoom() {
       endCall();
       setRoomId(null);
       setPartnerName("Stranger");
+      setPartnerRole("user");
       setPartnerAvatarUrl("");
       setPhase("queued");
       socket.emit("queue:join", { interests });
@@ -161,6 +164,7 @@ export default function ChatRoom() {
     socket.emit("session:skip");
     setRoomId(null);
     setPartnerName("Stranger");
+    setPartnerRole("user");
     setPartnerAvatarUrl("");
     setPhase("queued");
     socket.emit("queue:join", { interests });
@@ -235,7 +239,7 @@ export default function ChatRoom() {
             onFlipCamera={flipCamera}
             onSkip={skip}
             onStop={stop}
-            onReport={role === "user" ? () => setReportOpen(true) : null}
+            onReport={!['admin', 'developer'].includes(partnerRole) ? () => setReportOpen(true) : null}
           />
         </div>
 

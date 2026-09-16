@@ -32,3 +32,14 @@ export async function getCommunityStatus(fingerprint) {
     progress: next ? Math.min(1, successfulReferrals / next.min) : 1,
   };
 }
+
+export async function copyCommunityProfile(fromFingerprint, toFingerprint) {
+  if (!fromFingerprint || !toFingerprint || fromFingerprint === toFingerprint) return;
+  const source = await CommunityProfile.findOne({ fingerprint: fromFingerprint }).lean();
+  if (!source) return;
+  await CommunityProfile.findOneAndUpdate(
+    { fingerprint: toFingerprint },
+    { $set: { successfulReferrals: source.successfulReferrals || 0, lastReferralAt: source.lastReferralAt || null, updatedAt: new Date() } },
+    { upsert: true, new: true }
+  );
+}

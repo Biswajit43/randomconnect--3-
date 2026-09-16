@@ -378,7 +378,7 @@ export function registerGroupRooms(io) {
           ack?.({ ok: false, error: "That participant is no longer in this room." });
           return;
         }
-        if ((target.data.role || "user") !== "user") {
+        if (["admin", "developer"].includes(target.data.role || "user")) {
           ack?.({ ok: false, error: "Administrators and developers cannot be reported." });
           return;
         }

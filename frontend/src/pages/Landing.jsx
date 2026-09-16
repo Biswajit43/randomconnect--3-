@@ -20,6 +20,7 @@ export default function Landing() {
   const [name, setName] = useState(() => getDisplayName());
   const [interests, setInterests] = useState("");
   const [premiumCode, setPremiumCode] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
   const [premiumMessage, setPremiumMessage] = useState("");
   const [premiumBusy, setPremiumBusy] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
@@ -33,6 +34,8 @@ export default function Landing() {
   useEffect(() => {
     const invite = new URLSearchParams(window.location.search).get("invite");
     if (invite) setPremiumCode(invite);
+    const recovery = new URLSearchParams(window.location.search).get("recover");
+    if (recovery) setRecoveryCode(recovery);
   }, []);
 
   const canEnter = name.trim().length > 0 && ageConfirmed && agreedRules;
@@ -54,12 +57,14 @@ export default function Landing() {
 
   async function enter() {
     if (!canEnter) return;
-    if (premiumCode.trim()) {
+    if (recoveryCode.trim() || premiumCode.trim()) {
       setPremiumBusy(true);
       try {
-        const result = await api.redeemPremium(premiumCode.trim(), getFingerprint());
+        const result = recoveryCode.trim()
+          ? await api.redeemPremiumRecovery(recoveryCode.trim(), getFingerprint())
+          : await api.redeemPremium(premiumCode.trim(), getFingerprint());
         if (result.token) localStorage.setItem("rc_premium_token", result.token);
-        setPremiumMessage("Premium activated. You can view the details in Profile.");
+        setPremiumMessage(recoveryCode.trim() ? "Premium restored. You can view the details in Profile." : "Premium activated. You can view the details in Profile.");
       } catch (error) {
         setPremiumMessage(error.message);
         setPremiumBusy(false);
@@ -241,7 +246,7 @@ export default function Landing() {
                 />
 
                 <div className="mb-3 rounded-xl border border-violet/20 bg-violet/5 p-3">
-                  <label className="block text-[11px] font-mono uppercase tracking-wide text-violet">Premium invite (optional)</label>
+                  <label className="block text-[11px] font-mono uppercase tracking-wide text-violet">Premium access (optional)</label>
                   <input
                     value={premiumCode}
                     onChange={(e) => setPremiumCode(e.target.value.toUpperCase())}
@@ -249,7 +254,13 @@ export default function Landing() {
                     className="mt-2 w-full bg-ink/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:border-violet/60 transition"
                   />
                   <p className="mt-1.5 text-[11px] text-mist">Invite access lasts 30 days and never opens the admin panel.</p>
-                  {premiumMessage && <p className={`mt-1.5 text-[11px] ${premiumMessage.startsWith("Premium activated") ? "text-signal2" : "text-coral"}`}>{premiumMessage}</p>}
+                  <input
+                    value={recoveryCode}
+                    onChange={(e) => setRecoveryCode(e.target.value.toUpperCase())}
+                    placeholder="Recovery code after clearing browser data"
+                    className="mt-2 w-full bg-ink/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:border-signal/60 transition"
+                  />
+                  {premiumMessage && <p className={`mt-1.5 text-[11px] ${premiumMessage.startsWith("Premium activated") || premiumMessage.startsWith("Premium restored") ? "text-signal2" : "text-coral"}`}>{premiumMessage}</p>}
                 </div>
 
                 <div className="flex items-start gap-2.5 rounded-lg border border-signal/15 bg-signal/5 px-3 py-2.5 text-left mb-3">

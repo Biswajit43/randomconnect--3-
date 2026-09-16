@@ -4,6 +4,7 @@ import BannedUser from "../models/BannedUser.js";
 import AuditLog from "../models/AuditLog.js";
 import PremiumInvite from "../models/PremiumInvite.js";
 import PremiumGrant from "../models/PremiumGrant.js";
+import PremiumRecovery from "../models/PremiumRecovery.js";
 import Feedback from "../models/Feedback.js";
 import Room from "../models/Room.js";
 import AdminDevice from "../models/AdminDevice.js";
@@ -13,8 +14,9 @@ import { containsProfanity } from "../utils/profanityFilter.js";
 import { connectedUsers, adminPresence, abuseSignals, disconnectMatching } from "../services/presence.js";
 import { recordAudit } from "../services/audit.js";
 import { allowAction } from "../services/abuse.js";
-import { addPremiumDays, createInviteCode, createReferralCode, hashPremiumValue } from "../services/premium.js";
-import { getCommunityStatus, recordSuccessfulReferral } from "../services/community.js";
+import { addPremiumDays, createInviteCode, createRecoveryCode, createReferralCode, hashPremiumValue, restorePremiumUntil } from "../services/premium.js";
+import { copyCommunityProfile, getCommunityStatus, recordSuccessfulReferral } from "../services/community.js";
+import { notifyFeedback } from "../services/feedbackNotifications.js";
 import {
   ADMIN_COOKIE,
   ADMIN_SESSION_MS,
@@ -132,7 +134,10 @@ router.post("/feedback", asyncRoute(async (req, res) => {
   if (!allowAction(`feedback:${hashPremiumValue(safeFingerprint)}`, { limit: 3, windowMs: 24 * 60 * 60 * 1000 })) {
     return res.status(429).json({ error: "Feedback limit reached for today. Thanks for helping improve the community." });
   }
-  await Feedback.create({ fingerprintHash: hashPremiumValue(safeFingerprint), category: safeCategory, message: safeMessage });
+  const feedback = await Feedback.create({ fingerprintHash: hashPremiumValue(safeFingerprint), category: safeCategory, message: safeMessage });
+  notifyFeedback({ category: feedback.category, message: feedback.message, createdAt: feedback.createdAt }).catch((error) => {
+    console.error("[feedback] notification failed:", error.message);
+  });
   res.status(201).json({ ok: true });
 }));
 
@@ -240,6 +245,35 @@ router.get("/premium/status", asyncRoute(async (req, res) => {
   if (!fingerprint) return res.status(400).json({ error: "Device identity is required" });
   const grant = await PremiumGrant.findOne({ fingerprint, expiresAt: { $gt: new Date() } }).sort({ expiresAt: -1 }).lean();
   res.json({ active: Boolean(grant), expiresAt: grant?.expiresAt || null });
+}));
+
+router.post("/premium/recovery", asyncRoute(async (req, res) => {
+  const fingerprint = String(req.body?.fingerprint || "").trim();
+  if (!fingerprint) return res.status(400).json({ error: "Device identity is required" });
+  if (!allowAction(`premium-recovery:${hashPremiumValue(fingerprint)}`, { limit: 3, windowMs: 24 * 60 * 60 * 1000 })) {
+    return res.status(429).json({ error: "Recovery code limit reached for today." });
+  }
+  const grant = await PremiumGrant.findOne({ fingerprint, expiresAt: { $gt: new Date() } }).sort({ expiresAt: -1 }).lean();
+  if (!grant) return res.status(400).json({ error: "An active Premium grant is required first." });
+  const code = createRecoveryCode();
+  await PremiumRecovery.create({ codeHash: hashPremiumValue(code), ownerFingerprint: fingerprint, expiresAt: grant.expiresAt });
+  res.status(201).json({ code, expiresAt: grant.expiresAt });
+}));
+
+router.post("/premium/recovery/redeem", asyncRoute(async (req, res) => {
+  const code = String(req.body?.code || "").trim();
+  const fingerprint = String(req.body?.fingerprint || "").trim();
+  if (!code || !fingerprint) return res.status(400).json({ error: "Recovery code and device identity are required" });
+  const now = new Date();
+  const recovery = await PremiumRecovery.findOneAndUpdate(
+    { codeHash: hashPremiumValue(code), expiresAt: { $gt: now }, $expr: { $lt: ["$uses", "$maxUses"] } },
+    { $inc: { uses: 1 } },
+    { new: true }
+  );
+  if (!recovery) return res.status(400).json({ error: "Recovery code is invalid, expired, or fully used." });
+  const grant = await restorePremiumUntil(fingerprint, recovery.expiresAt);
+  await copyCommunityProfile(recovery.ownerFingerprint, fingerprint).catch((error) => console.error("[community] recovery copy failed:", error.message));
+  res.json({ ok: true, token: grant.token, expiresAt: grant.expiresAt });
 }));
 
 router.post("/premium/redeem", asyncRoute(async (req, res) => {

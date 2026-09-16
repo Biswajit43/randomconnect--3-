@@ -92,7 +92,8 @@ export function registerSignaling(io) {
             ? socket.data.staffDisplayName || "Admin Manager"
             : requestedName || "Guest";
         const requestedAvatar = typeof avatarUrl === "string" ? avatarUrl.trim() : "";
-        socket.data.avatarUrl = socket.data.role === "premium" && /^data:image\/(?:png|jpeg|webp);base64,/i.test(requestedAvatar) && requestedAvatar.length <= 60000
+        const canUsePremiumIdentity = ["premium", "admin", "developer"].includes(socket.data.role);
+        socket.data.avatarUrl = canUsePremiumIdentity && /^data:image\/(?:png|jpeg|webp);base64,/i.test(requestedAvatar) && requestedAvatar.length <= 60000
           ? requestedAvatar
           : null;
 
@@ -140,8 +141,8 @@ export function registerSignaling(io) {
         // One side initiates the WebRTC offer to avoid glare. Each side gets
         // the other's display name so the UI can show a real name instead of
         // a generic "Stranger" label.
-        socket.emit("match:found", { roomId, initiator: true, partnerDisplayName: partnerSocket.data.displayName, partnerAvatarUrl: partnerSocket.data.avatarUrl || null });
-        partnerSocket.emit("match:found", { roomId, initiator: false, partnerDisplayName: socket.data.displayName, partnerAvatarUrl: socket.data.avatarUrl || null });
+        socket.emit("match:found", { roomId, initiator: true, partnerDisplayName: partnerSocket.data.displayName, partnerRole: partnerSocket.data.role || "user", partnerAvatarUrl: partnerSocket.data.avatarUrl || null });
+        partnerSocket.emit("match:found", { roomId, initiator: false, partnerDisplayName: socket.data.displayName, partnerRole: socket.data.role || "user", partnerAvatarUrl: socket.data.avatarUrl || null });
       } else {
         matchmaker.addToQueue(entry);
         socket.emit("queue:waiting", { position: matchmaker.queueSize() });
@@ -185,7 +186,7 @@ export function registerSignaling(io) {
         acknowledge?.({ ok: false });
         return;
       }
-      if ((partner.data.role || "user") !== "user") {
+      if (["admin", "developer"].includes(partner.data.role || "user")) {
         acknowledge?.({ ok: false, error: "Administrators and developers cannot be reported." });
         return;
       }

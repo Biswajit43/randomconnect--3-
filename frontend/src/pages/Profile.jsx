@@ -14,6 +14,9 @@ export default function Profile() {
   const [community, setCommunity] = useState(null);
   const [avatar, setAvatar] = useState(() => getAvatarUrl());
   const [avatarMessage, setAvatarMessage] = useState("");
+  const [staffRole, setStaffRole] = useState(null);
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [recoveryMessage, setRecoveryMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,22 +25,37 @@ export default function Profile() {
       return;
     }
     const fingerprint = getFingerprint();
-    Promise.all([api.premiumStatus(fingerprint), api.communityStatus(fingerprint)])
-      .then(([premiumStatus, communityStatus]) => {
+    Promise.all([api.premiumStatus(fingerprint), api.communityStatus(fingerprint), api.adminSession().catch(() => null)])
+      .then(([premiumStatus, communityStatus, adminSession]) => {
         setPremium(premiumStatus);
         setCommunity(communityStatus);
+        setStaffRole(adminSession?.role || null);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [navigate]);
 
   const remaining = useMemo(() => daysLeft(premium?.expiresAt), [premium?.expiresAt]);
+  const isPermanentStaff = staffRole === "admin" || staffRole === "developer";
+  const canUsePremiumIdentity = Boolean(premium?.active || isPermanentStaff);
+
+  async function createRecovery() {
+    try {
+      const result = await api.createPremiumRecovery(getFingerprint());
+      setRecoveryCode(result.code);
+      setRecoveryMessage("Save this code somewhere safe. It restores your remaining Premium time after browser data is cleared.");
+    } catch (error) { setRecoveryMessage(error.message || "Could not create a recovery code."); }
+  }
+
+  async function copyRecovery() {
+    try { await navigator.clipboard.writeText(recoveryCode); setRecoveryMessage("Recovery code copied."); } catch { setRecoveryMessage("Copy failed — save the code manually."); }
+  }
 
   async function updateAvatar(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!premium?.active) { setAvatarMessage("Profile photos are a Premium feature. Invite a friend to unlock it."); return; }
+    if (!canUsePremiumIdentity) { setAvatarMessage("Profile photos are a Premium feature. Invite a friend to unlock it."); return; }
     if (!file.type.startsWith("image/")) { setAvatarMessage("Please choose an image file."); return; }
     if (file.size > 5 * 1024 * 1024) { setAvatarMessage("Please choose an image under 5 MB."); return; }
     const reader = new FileReader();
@@ -77,11 +95,13 @@ export default function Profile() {
           <section className="mt-6 space-y-4">
             <article className="rounded-2xl border border-violet/30 bg-panel/80 p-5 surface-lift">
               <div className="flex items-start justify-between gap-4">
-                <div><p className="text-xs uppercase tracking-wider text-violet">Premium status</p><h2 className="mt-1 font-display text-xl font-semibold text-white">{premium?.active ? "Premium active" : "No active Premium"}</h2></div>
-                <span className="rounded-full bg-violet/15 px-3 py-1 text-xs font-semibold text-violet">{premium?.active ? `${remaining} day${remaining === 1 ? "" : "s"} left` : "Invite to unlock"}</span>
+                <div><p className="text-xs uppercase tracking-wider text-violet">Premium status</p><h2 className="mt-1 font-display text-xl font-semibold text-white">{isPermanentStaff ? "Permanent staff Premium" : premium?.active ? "Premium active" : "No active Premium"}</h2></div>
+                <span className="rounded-full bg-violet/15 px-3 py-1 text-xs font-semibold text-violet">{isPermanentStaff ? "Lifetime" : premium?.active ? `${remaining} day${remaining === 1 ? "" : "s"} left` : "Invite to unlock"}</span>
               </div>
-              <p className="mt-3 text-sm text-mist">Every successful friend redemption adds another 30 days to your current Premium time.</p>
+              <p className="mt-3 text-sm text-mist">{isPermanentStaff ? "Your verified staff account has permanent Premium identity privileges." : "Every successful friend redemption adds another 30 days to your current Premium time."}</p>
             </article>
+
+            {!isPermanentStaff && premium?.active && <article className="rounded-2xl border border-signal/20 bg-signal/5 p-5"><p className="text-xs uppercase tracking-wider text-signal2">Account recovery</p><h2 className="mt-1 font-display text-lg font-semibold text-white">Keep your Premium safe</h2><p className="mt-2 text-sm text-mist">Browser history or site data can remove your local device identity. Create a recovery code before that happens.</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={createRecovery} className="rounded-lg bg-signal px-3 py-2 text-xs font-semibold text-ink hover:brightness-110">Create recovery code</button>{recoveryCode && <button onClick={copyRecovery} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white hover:bg-white/5">Copy code</button>}</div>{recoveryCode && <p className="mt-3 break-all rounded-lg border border-white/10 bg-panel2 px-3 py-2 font-mono text-xs text-signal2">{recoveryCode}</p>}{recoveryMessage && <p className="mt-2 text-xs text-mist">{recoveryMessage}</p>}</article>}
 
             <article className="rounded-2xl border border-white/10 bg-panel/80 p-5">
               <div className="flex items-center gap-4">
@@ -90,7 +110,7 @@ export default function Profile() {
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <label className={`cursor-pointer rounded-lg px-3 py-2 text-xs font-semibold ${premium?.active ? "bg-violet text-ink hover:brightness-110" : "border border-white/10 text-mist"}`}>
-                  {premium?.active ? "Upload profile photo" : "Premium photo feature"}
+                  {canUsePremiumIdentity ? "Upload profile photo" : "Premium photo feature"}
                   <input type="file" accept="image/png,image/jpeg,image/webp" onChange={updateAvatar} className="sr-only" />
                 </label>
                 {avatar && <button onClick={removeAvatar} className="rounded-lg border border-coral/30 px-3 py-2 text-xs text-coral hover:bg-coral/10">Remove photo</button>}

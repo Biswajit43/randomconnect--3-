@@ -46,6 +46,8 @@ export const api = {
   redeemPremium: (code, fingerprint) => request("/premium/redeem", { method: "POST", body: JSON.stringify({ code, fingerprint }) }),
   premiumReferral: (fingerprint) => request("/premium/referral", { method: "POST", body: JSON.stringify({ fingerprint }) }),
   premiumStatus: (fingerprint) => request(`/premium/status?fingerprint=${encodeURIComponent(fingerprint)}`),
+  createPremiumRecovery: (fingerprint) => request("/premium/recovery", { method: "POST", body: JSON.stringify({ fingerprint }) }),
+  redeemPremiumRecovery: (code, fingerprint) => request("/premium/recovery/redeem", { method: "POST", body: JSON.stringify({ code, fingerprint }) }),
   communityStatus: (fingerprint) => request(`/community/status?fingerprint=${encodeURIComponent(fingerprint)}`),
   submitFeedback: (payload) => request("/feedback", { method: "POST", body: JSON.stringify(payload) }),
   adminFeedback: () => request("/admin/feedback"),

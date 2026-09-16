@@ -9,6 +9,7 @@ export function useWebRTC({ localStream }) {
   const [connectionState, setConnectionState] = useState("idle"); // idle | connecting | connected | failed
   const pcRef = useRef(null);
   const roomIdRef = useRef(null);
+  const remoteStreamRef = useRef(null);
 
   const createPeerConnection = useCallback(() => {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
@@ -23,7 +24,10 @@ export function useWebRTC({ localStream }) {
     };
 
     pc.ontrack = (event) => {
-      setRemoteStream(event.streams[0]);
+      const incoming = event.streams?.[0] || remoteStreamRef.current || new MediaStream();
+      if (!incoming.getTracks().includes(event.track)) incoming.addTrack(event.track);
+      remoteStreamRef.current = incoming;
+      setRemoteStream(incoming);
     };
 
     pc.onconnectionstatechange = () => {
@@ -58,6 +62,7 @@ export function useWebRTC({ localStream }) {
     pcRef.current = null;
     roomIdRef.current = null;
     setRemoteStream(null);
+    remoteStreamRef.current = null;
     setConnectionState("idle");
   }, []);
 

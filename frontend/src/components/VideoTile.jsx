@@ -12,12 +12,19 @@ export default function VideoTile({
 
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceIntensity, setVoiceIntensity] = useState(0);
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
 
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.srcObject = stream || null;
+      setPlaybackBlocked(false);
+      const media = videoRef.current;
+      const tryPlayback = () => media.play().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(!muted));
+      media.addEventListener("loadedmetadata", tryPlayback);
+      tryPlayback();
+      return () => media.removeEventListener("loadedmetadata", tryPlayback);
     }
-  }, [stream]);
+  }, [muted, stream]);
 
   useEffect(() => {
     const audioTrack = stream?.getAudioTracks?.()[0];
@@ -230,24 +237,25 @@ export default function VideoTile({
       }}
     >
       {/* VIDEO */}
-      {hasLiveVideo ? (
+      {stream && (
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted={muted}
           className={`
-            w-full
-            h-full
-            object-cover
+            ${hasLiveVideo ? "w-full h-full object-cover" : "absolute h-px w-px opacity-0"}
             ${mirrored ? "scale-x-[-1]" : ""}
           `}
         />
-      ) : (
+      )}
+      {!hasLiveVideo && (
         <div className="w-full h-full flex items-center justify-center">
           {avatarUrl ? <img src={avatarUrl} alt="" className="h-20 w-20 rounded-full object-cover border-2 border-white/15 shadow-2xl" /> : <div className="w-14 h-14 rounded-full bg-panel2 animate-drift" />}
         </div>
       )}
+
+      {playbackBlocked && stream && <button onClick={() => videoRef.current?.play().then(() => setPlaybackBlocked(false)).catch(() => {})} className="absolute inset-x-3 bottom-3 z-10 rounded-lg border border-signal/30 bg-black/75 px-3 py-2 text-xs font-semibold text-signal2 backdrop-blur">Tap to hear</button>}
 
       {role !== "user" && (
         <span className={`absolute top-3 left-3 rounded-md px-2 py-1 font-mono text-[10px] font-bold tracking-[0.14em] backdrop-blur ${role === "developer" ? "role-badge-developer" : role === "premium" ? "role-badge-premium" : "role-badge-admin"}`}>
