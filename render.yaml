@@ -23,5 +23,11 @@ services:
         value: hive
       - key: MODERATION_API_KEY
         sync: false
+      - key: AUDIUS_API_KEY
+        sync: false # free Audius API key; keep server-side
+      - key: AUDIUS_APP_NAME
+        value: randomconnect-room-arcade
+      - key: AUDIUS_API_BASE_URL
+        value: https://api.audius.co/v1
       - key: MIN_AGE
         value: 18

@@ -51,4 +51,11 @@ export const api = {
   communityStatus: (fingerprint) => request(`/community/status?fingerprint=${encodeURIComponent(fingerprint)}`),
   submitFeedback: (payload) => request("/feedback", { method: "POST", body: JSON.stringify(payload) }),
   adminFeedback: () => request("/admin/feedback"),
+  musicSearch: (filters = {}) => request(`/music/search?${new URLSearchParams(filters)}`),
+  musicTrending: (filters = {}) => request(`/music/trending?${new URLSearchParams(filters)}`),
+  musicGenres: () => request("/music/genres"),
+  musicRandom: (filters = {}) => request(`/music/random?${new URLSearchParams(filters)}`),
+  startSongGame: (payload) => request("/arcade/song/start", { method: "POST", body: JSON.stringify(payload) }),
+  guessSongGame: (payload) => request("/arcade/song/guess", { method: "POST", body: JSON.stringify(payload) }),
+  endSongGame: (payload) => request("/arcade/song/end", { method: "POST", body: JSON.stringify(payload) }),
 };

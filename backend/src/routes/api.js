@@ -17,6 +17,8 @@ import { allowAction } from "../services/abuse.js";
 import { addPremiumDays, createInviteCode, createRecoveryCode, createReferralCode, hashPremiumValue, restorePremiumUntil } from "../services/premium.js";
 import { copyCommunityProfile, getCommunityStatus, recordSuccessfulReferral } from "../services/community.js";
 import { notifyFeedback } from "../services/feedbackNotifications.js";
+import { musicProvider, musicProviderStatus } from "../services/musicProvider.js";
+import { startSongGameFromApi, guessSongGameFromApi, endSongGameFromApi } from "../sockets/groupRooms.js";
 import {
   ADMIN_COOKIE,
   ADMIN_SESSION_MS,
@@ -120,6 +122,45 @@ function requireDeveloper(req, res, next) {
 const asyncRoute = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 router.get("/health", (_req, res) => res.json({ ok: true }));
+
+// Room Arcade music discovery. Audius filtering is intentionally explicit:
+// country and language are reported as unavailable because Audius does not
+// provide those fields in the track discovery API.
+router.get("/music/search", asyncRoute(async (req, res) => {
+  const tracks = await musicProvider.searchTracks({ ...req.query, limit: req.query.limit || 25 });
+  res.json({ source: musicProviderStatus().provider, tracks, filters: musicProviderStatus() });
+}));
+
+router.get("/music/trending", asyncRoute(async (req, res) => {
+  const tracks = await musicProvider.getTrendingTracks({ ...req.query, limit: req.query.limit || 25 });
+  res.json({ source: musicProviderStatus().provider, tracks, filters: musicProviderStatus() });
+}));
+
+router.get("/music/genres", (_req, res) => res.json({ source: musicProviderStatus().provider, genres: musicProvider.genres, filters: musicProviderStatus() }));
+
+router.get("/music/random", asyncRoute(async (req, res) => {
+  const tracks = await musicProvider.getRandomTracks({ ...req.query, limit: req.query.limit || 25 });
+  res.json({ source: musicProviderStatus().provider, tracks, filters: musicProviderStatus() });
+}));
+
+router.post("/arcade/song/start", asyncRoute(async (req, res) => {
+  const { roomId, fingerprint, ...config } = req.body || {};
+  if (!roomId || !fingerprint) return res.status(400).json({ error: "roomId and fingerprint are required" });
+  const game = await startSongGameFromApi({ roomId, fingerprint, config });
+  res.status(201).json({ ok: true, gameId: game.gameId, transport: "socket.io", events: ["arcade:song:start", "arcade:song:round", "arcade:song:guess", "arcade:song:result", "arcade:song:score", "arcade:song:end", "arcade:song:rematch"] });
+}));
+
+router.post("/arcade/song/guess", asyncRoute(async (req, res) => {
+  const { roomId, fingerprint, gameId, roundToken, answer, choice } = req.body || {};
+  if (!roomId || !fingerprint || !gameId || !roundToken) return res.status(400).json({ error: "roomId, fingerprint, gameId and roundToken are required" });
+  res.json(await guessSongGameFromApi({ roomId, fingerprint, gameId, roundToken, answer, choice }));
+}));
+
+router.post("/arcade/song/end", asyncRoute(async (req, res) => {
+  const { roomId, fingerprint } = req.body || {};
+  if (!roomId || !fingerprint) return res.status(400).json({ error: "roomId and fingerprint are required" });
+  res.json({ ok: true, game: endSongGameFromApi({ roomId, fingerprint }) });
+}));
 
 router.get("/stats", (_req, res) => {
   res.json({ waiting: matchmaker.queueSize() });

@@ -155,6 +155,17 @@ Vercel (`VITE_TURN_URL`/`VITE_TURN_USERNAME`/`VITE_TURN_CREDENTIAL`) — the
 frontend needs them to build the ICE server list. Twilio's Network Traversal
 Service and Xirsys are paid alternatives with better reliability at scale.
 
+If people sometimes cannot hear one another, do not treat a successful
+Socket.IO connection as proof that media can connect. The browser may have a
+signaling connection while ICE is blocked. Configure all TURN URLs in the
+frontend build (`VITE_TURN_URL`, `VITE_TURN_USERNAME`, and
+`VITE_TURN_CREDENTIAL`) and the matching backend values, then redeploy the
+frontend. The group hook now clears stale peer connections after a Socket.IO
+reconnect, retries failed ICE paths with backoff, queues early ICE candidates,
+and avoids simultaneous offer collisions. Mobile autoplay policy may still
+require a first user gesture; remote tiles show “Tap to hear” when playback is
+blocked.
+
 ### 5. After it's live — actually test this part
 
 Deploying without testing across networks is how "works on my machine"
@@ -255,6 +266,96 @@ is requested on join. The user has to explicitly tap "turn camera on," which
 requests the video track and adds it to the existing call via WebRTC
 renegotiation — no reconnect, no dropped audio, no interruption to anyone
 already in the call. Applies to both `ChatRoom.jsx` and `GroupRoom.jsx`.
+
+## Room Arcade: Song Guess
+
+Song Guess is integrated into the existing `/rooms/:roomId` Room Arcade. It
+uses the current Socket.IO connection and room membership; it does not create
+another room, login, page, or external redirect. Existing player cards, chat,
+video calls, and other mini-games remain in the same panel.
+
+### Install and configure
+
+```bash
+cd backend
+npm install
+npm start
+
+cd ../frontend
+npm install
+npm run dev
+```
+
+Optional Audius environment variables:
+
+```env
+AUDIUS_API_KEY=your_free_audius_api_key
+AUDIUS_APP_NAME=randomconnect-room-arcade
+AUDIUS_API_BASE_URL=https://api.audius.co/v1
+```
+
+If you cannot create an Audius token, leave `AUDIUS_API_KEY` unset. The game
+automatically uses its tokenless Wikimedia Commons fallback and only accepts
+Public Domain, CC0, CC BY, and CC BY-SA audio with license metadata. If an
+Audius key is present, Audius is preferred and Commons remains the fallback.
+`AUDIUS_API_KEY` stays on the backend. `CLIENT_URL`, `MONGO_URI`, existing
+TURN/admin variables, and frontend `VITE_SERVER_URL` remain unchanged. Render
+users can set the optional variables in `render.yaml` or the service dashboard.
+
+No Mongo migration is required. Active Song Guess state is stored in the
+existing realtime process, like the current Room Arcade games. Before running
+multiple backend instances, move `songGames` and room presence to the same
+Redis adapter/store used by all instances.
+
+### API and realtime contract
+
+The backend exposes `GET /api/music/search`, `/api/music/trending`,
+`/api/music/genres`, `/api/music/random` and `POST /api/arcade/song/start`,
+`/api/arcade/song/guess`, and `/api/arcade/song/end`. Interactive rooms use
+Socket.IO events so every member receives one authoritative server round:
+
+```text
+arcade:song:start
+arcade:song:round
+arcade:song:guess
+arcade:song:result
+arcade:song:score
+arcade:song:end
+arcade:song:rematch
+```
+
+The provider adapters are `backend/src/services/audiusProvider.js`,
+`backend/src/services/commonsProvider.js`, and the token-selecting
+`backend/src/services/musicProvider.js`. They expose `searchTracks`,
+`getTrendingTracks`, `getRandomTracks`, `getPlayableTracks`, and `getTrack`.
+They cache discovery responses, deduplicate inflight requests,
+times out and retries transient/429 responses, and falls back from trending or
+new releases to popular/random playable tracks. Tracks without a title,
+artist, or streamable flag are removed.
+
+Audius currently documents a free plan of 10 requests/second and 500,000
+requests/month. The adapter supports trending, popular, random-by-local-shuffle,
+recent/new releases, genres, artist search, and release-date decade filtering
+when metadata exists. Without a token, Commons supports openly licensed audio
+search and local randomization; trending/popularity/new-release data are
+reported as unavailable rather than faked. Neither source provides a reliable
+country/language field for this game, so those controls are marked unavailable.
+
+### Legal and attribution notes
+
+Audius creator content is subject to the creator-selected API/Open Music
+License, Creative Commons choice, and visibility/stream restrictions. Commons
+files are accepted only when the API exposes Public Domain, CC0, CC BY, or
+CC BY-SA metadata, and attribution is preserved in the result. The game does
+not scrape or use commercial clips. If both network catalogs are unsuitable,
+switch to a vetted catalog of openly licensed/self-created clips. Do not add
+Spotify, YouTube, Deezer, iTunes, downloaded commercial clips, or scraped audio
+to Song Guess.
+
+The provider decision was verified against Audius' current developer docs,
+free-plan limits, track/stream API, and October 2025 Terms of Use before
+implementation. Re-check those terms and each creator's selected license
+before launching a commercial deployment.
 
 ## Pre-deployment checklist
 

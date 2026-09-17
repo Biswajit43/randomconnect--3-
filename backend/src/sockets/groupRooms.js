@@ -1,6 +1,7 @@
 import { roomState } from "../services/roomState.js";
 import Room from "../models/Room.js";
 import { searchTrack, parseYouTubeId, getYouTubeMetadata } from "../services/musicService.js";
+import { musicProvider } from "../services/musicProvider.js";
 import { allowAction } from "../services/abuse.js";
 import { noteJoin } from "../services/presence.js";
 import { fileReport } from "../services/moderation.js";
@@ -96,6 +97,7 @@ function getMusicPosition(music, now) {
 }
 
 const roomGames = new Map();
+const songGames = new Map();
 const GAME_ROUNDS = 5;
 const BOMB_TURN_MS = 12000;
 const BOMB_GRACE_MS = 1800;
@@ -104,6 +106,229 @@ const DRAW_WORDS = [
   "bird", "boat", "cake", "cloud", "cow", "crown", "cup", "door", "duck", "ear", "egg", "eye", "fire", "flag", "frog", "ghost", "glasses", "guitar", "heart", "horse", "ice cream", "island", "jacket", "key", "kite", "lamp", "leaf", "lion", "lock", "map", "milk", "monkey", "mountain", "mouse", "orange", "pencil", "piano", "pig", "rain", "ring", "robot", "sandwich", "scarf", "shoe", "skateboard", "snake", "sock", "spoon", "table", "taco", "tiger", "train", "umbrella", "watch", "watermelon", "wheel", "window", "wolf", "zebra", "birthday", "campfire", "castle", "cookie", "football", "laptop", "mermaid", "parrot", "penguin", "pirate", "princess", "spaceship", "superhero", "toothbrush", "treasure", "volcano", "wizard", "ambulance", "backpack", "barcode", "bubble", "camera", "candle", "cactus", "chocolate", "donut", "elevator", "fan", "fountain", "garden", "hamburger", "helmet", "jellyfish", "ladder", "microphone", "octopus", "pancake", "popcorn", "roller skate", "sunglasses", "trophy", "yoyo"
 ];
 const BOMB_PARTY_SYLLABLES = ["cat", "at", "an", "ar", "oo", "ee", "st", "ch", "in", "on", "ra", "sun"];
+
+const SONG_DEFAULTS = {
+  rounds: 5,
+  timeLimit: 15,
+  difficulty: "normal",
+  category: "trending",
+  genre: "",
+  decade: "any",
+};
+
+function normalizeSongAnswer(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function songAcceptedAnswers(track) {
+  const title = normalizeSongAnswer(track.title);
+  const artist = normalizeSongAnswer(track.artist);
+  return new Set([title, `${title} ${artist}`, `${artist} ${title}`].filter(Boolean));
+}
+
+function songPoints(game, elapsedMs) {
+  const speed = Math.max(0, 1 - elapsedMs / game.timeLimitMs);
+  const base = game.difficulty === "hard" ? 1200 : game.difficulty === "easy" ? 800 : 1000;
+  return Math.max(100, Math.round(base * (0.35 + speed * 0.65)));
+}
+
+function songPlayers(game) {
+  return Object.values(game.players)
+    .sort((a, b) => b.score - a.score || b.streak - a.streak || a.displayName.localeCompare(b.displayName))
+    .map((player) => ({ socketId: player.socketId || null, displayName: player.displayName, score: player.score, streak: player.streak }));
+}
+
+function publicSongGame(game, reveal = false) {
+  if (!game) return null;
+  const track = game.currentTrack;
+  return {
+    gameId: game.gameId,
+    type: "song",
+    title: "Song Guess",
+    status: game.status,
+    round: game.round,
+    totalRounds: game.totalRounds,
+    settings: game.settings,
+    roundToken: game.roundToken || null,
+    serverNow: Date.now(),
+    roundStartedAt: game.roundStartedAt || null,
+    roundEndsAt: game.roundEndsAt || null,
+    audioUrl: track?.streamUrl || null,
+    nextAudioUrl: game.nextTrack?.streamUrl || null,
+    options: game.currentOptions || [],
+    artworkUrl: track?.artworkUrl || null,
+    genre: track?.genre || null,
+    answeredCount: game.answered?.size || 0,
+    players: songPlayers(game),
+    answer: reveal && track ? { trackId: track.id, title: track.title, artist: track.artist, album: track.album, source: track.source, artworkUrl: track.artworkUrl } : null,
+    fallbackCount: game.fallbackCount || 0,
+  };
+}
+
+function emitSongScores(io, roomId, game) {
+  io.to(roomId).emit("arcade:song:score", { gameId: game.gameId, players: songPlayers(game) });
+}
+
+function clearSongTimer(game) {
+  if (game?.timer) clearTimeout(game.timer);
+  if (game) game.timer = null;
+}
+
+function songCandidate(game) {
+  const available = game.trackPool.filter((track) => !game.usedTrackIds.has(track.id));
+  const track = available[0] || game.trackPool[Math.floor(Math.random() * game.trackPool.length)];
+  if (track) game.usedTrackIds.add(track.id);
+  return track || null;
+}
+
+function songOptions(game) {
+  const distractors = game.trackPool
+    .filter((track) => track.id !== game.currentTrack?.id)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3)
+    .map((track) => `${track.title} — ${track.artist}`);
+  return [...distractors, `${game.currentTrack.title} — ${game.currentTrack.artist}`].sort(() => Math.random() - 0.5);
+}
+
+function songPublicRound(io, roomId, game) {
+  io.to(roomId).emit("arcade:song:round", publicSongGame(game));
+  emitSongScores(io, roomId, game);
+}
+
+function finishSongGame(io, roomId, game) {
+  if (!game || songGames.get(roomId) !== game) return;
+  clearSongTimer(game);
+  game.status = "finished";
+  io.to(roomId).emit("arcade:song:end", { ...publicSongGame(game, true), final: true });
+  emitSongScores(io, roomId, game);
+}
+
+function finishSongRound(io, roomId, game) {
+  if (!game || songGames.get(roomId) !== game || !["live", "paused"].includes(game.status)) return;
+  clearSongTimer(game);
+  game.status = "result";
+  io.to(roomId).emit("arcade:song:result", publicSongGame(game, true));
+  emitSongScores(io, roomId, game);
+  game.timer = setTimeout(() => {
+    if (songGames.get(roomId) !== game) return;
+    if (game.round >= game.totalRounds) finishSongGame(io, roomId, game);
+    else startSongRound(io, roomId, game);
+  }, 2600);
+}
+
+function startSongRound(io, roomId, game) {
+  clearSongTimer(game);
+  game.round += 1;
+  game.status = "live";
+  game.roundToken = uuid();
+  game.currentTrack = songCandidate(game);
+  game.nextTrack = game.trackPool.find((track) => !game.usedTrackIds.has(track.id)) || game.currentTrack;
+  game.currentOptions = songOptions(game);
+  game.answered = new Set();
+  game.roundStartedAt = Date.now();
+  game.roundEndsAt = game.roundStartedAt + game.timeLimitMs;
+  game.fallbackCount = 0;
+  if (!game.currentTrack) {
+    finishSongGame(io, roomId, game);
+    return;
+  }
+  io.to(roomId).emit("arcade:song:round", publicSongGame(game));
+  emitSongScores(io, roomId, game);
+  game.timer = setTimeout(() => finishSongRound(io, roomId, game), game.timeLimitMs + 250);
+}
+
+async function createSongGame(io, roomId, config = {}) {
+  const settings = {
+    ...SONG_DEFAULTS,
+    ...config,
+    rounds: Math.min(Math.max(Number(config.rounds) || SONG_DEFAULTS.rounds, 3), 12),
+    timeLimit: Math.min(Math.max(Number(config.timeLimit) || SONG_DEFAULTS.timeLimit, 8), 30),
+    difficulty: ["easy", "normal", "hard"].includes(config.difficulty) ? config.difficulty : SONG_DEFAULTS.difficulty,
+    category: ["trending", "popular", "random", "new", "search"].includes(config.category) ? config.category : SONG_DEFAULTS.category,
+    genre: String(config.genre || "").slice(0, 60),
+    decade: String(config.decade || "any"),
+  };
+  const trackPool = await musicProvider.getPlayableTracks({ ...settings, limit: 100, query: String(config.query || "").slice(0, 120) });
+  if (!trackPool.length) throw new Error("Audius returned no playable tracks for these filters.");
+  const participants = [...(io.sockets.adapter.rooms.get(roomId) || [])]
+    .map((socketId) => io.sockets.sockets.get(socketId))
+    .filter((peer) => peer?.data?.groupRooms?.has(roomId));
+  const players = Object.fromEntries(participants.map((peer) => [peer.data.fingerprint, {
+    fingerprint: peer.data.fingerprint,
+    socketId: peer.id,
+    displayName: peer.data.displayName || "Guest",
+    score: 0,
+    streak: 0,
+  }]));
+  const game = {
+    gameId: uuid(), type: "song", status: "starting", settings, totalRounds: settings.rounds, round: 0,
+    timeLimitMs: settings.timeLimit * 1000, difficulty: settings.difficulty, trackPool, usedTrackIds: new Set(),
+    players, answered: new Set(), timer: null, currentTrack: null, nextTrack: null, fallbackCount: 0,
+  };
+  songGames.set(roomId, game);
+  io.to(roomId).emit("arcade:song:start", { gameId: game.gameId, settings: game.settings, serverNow: Date.now() });
+  startSongRound(io, roomId, game);
+  return game;
+}
+
+function canControlSong(socket, roomId) {
+  return Boolean(socket.data.groupRooms?.has(roomId)) && Boolean(socket.data.isModeratorByRoom?.[roomId]);
+}
+
+let arcadeIo = null;
+
+async function submitSongGuess(io, roomId, socket, { gameId, roundToken, answer, choice }) {
+  const game = songGames.get(roomId);
+  const fingerprint = socket.data.fingerprint;
+  const player = game?.players?.[fingerprint];
+  if (!game || game.gameId !== gameId || game.status !== "live" || game.roundToken !== roundToken || !player || !socket.data.groupRooms?.has(roomId)) {
+    return { ok: false, error: "That round is no longer accepting guesses." };
+  }
+  if (Date.now() >= game.roundEndsAt) return { ok: false, error: "Too late — the round has ended." };
+  if (game.answered.has(fingerprint)) return { ok: false, error: "Only one guess per round is counted." };
+  game.answered.add(fingerprint);
+  const submitted = String(choice || answer || "").slice(0, 200);
+  const correct = songAcceptedAnswers(game.currentTrack).has(normalizeSongAnswer(submitted));
+  const elapsedMs = Math.max(0, Date.now() - game.roundStartedAt);
+  const points = correct ? songPoints(game, elapsedMs) : 0;
+  if (correct) { player.score += points; player.streak += 1; }
+  else player.streak = 0;
+  io.to(roomId).emit("arcade:song:guess", { gameId, roundToken, answeredCount: game.answered.size, playerName: player.displayName });
+  emitSongScores(io, roomId, game);
+  const connectedPlayers = Object.values(game.players).filter((candidate) => candidate.socketId && io.sockets.sockets.get(candidate.socketId)?.data?.groupRooms?.has(roomId));
+  if (connectedPlayers.length && connectedPlayers.every((candidate) => game.answered.has(candidate.fingerprint))) finishSongRound(io, roomId, game);
+  return { ok: true, correct, points, feedback: correct ? `Correct! +${points}` : "Not quite — keep listening." };
+}
+
+export async function startSongGameFromApi({ roomId, fingerprint, config = {} }) {
+  const actor = arcadeIo && [...arcadeIo.sockets.sockets.values()].find((candidate) => candidate.data.fingerprint === fingerprint && candidate.data.groupRooms?.has(roomId));
+  if (!actor || !canControlSong(actor, roomId)) throw new Error("Only the room host can control Song Guess.");
+  const game = songGames.get(roomId);
+  if (game && ["live", "paused", "result"].includes(game.status)) throw new Error("A Song Guess game is already running.");
+  if (game) { clearSongTimer(game); songGames.delete(roomId); }
+  return createSongGame(arcadeIo, roomId, config);
+}
+
+export async function guessSongGameFromApi({ roomId, fingerprint, gameId, roundToken, answer, choice }) {
+  const actor = arcadeIo && [...arcadeIo.sockets.sockets.values()].find((candidate) => candidate.data.fingerprint === fingerprint && candidate.data.groupRooms?.has(roomId));
+  if (!actor) throw new Error("You must be a member of the room to answer.");
+  return submitSongGuess(arcadeIo, roomId, actor, { gameId, roundToken, answer, choice });
+}
+
+export function endSongGameFromApi({ roomId, fingerprint }) {
+  const actor = arcadeIo && [...arcadeIo.sockets.sockets.values()].find((candidate) => candidate.data.fingerprint === fingerprint && candidate.data.groupRooms?.has(roomId));
+  const game = songGames.get(roomId);
+  if (!actor || !game || !canControlSong(actor, roomId)) throw new Error("Only the room host can end Song Guess.");
+  finishSongGame(arcadeIo, roomId, game);
+  return publicSongGame(game, true);
+}
 
 function publicGame(game) {
   if (!game) return null;
@@ -379,6 +604,7 @@ function removeGamePlayer(io, roomId, socketId) {
 }
 
 export function registerGroupRooms(io) {
+  arcadeIo = io;
   io.on("connection", (socket) => {
     socket.on(
       "group:join",
@@ -438,6 +664,19 @@ export function registerGroupRooms(io) {
         if (activeGame) {
           activeGame.players[socket.id] ||= { socketId: socket.id, displayName: socket.data.displayName || "Guest", score: 0, streak: 0 };
         }
+        const activeSong = songGames.get(roomId);
+        if (activeSong) {
+          const player = activeSong.players[socket.data.fingerprint] || {
+            fingerprint: socket.data.fingerprint,
+            socketId: socket.id,
+            displayName: socket.data.displayName || "Guest",
+            score: 0,
+            streak: 0,
+          };
+          player.socketId = socket.id;
+          player.displayName = socket.data.displayName || player.displayName;
+          activeSong.players[socket.data.fingerprint] = player;
+        }
 
         const existingPeers = existingPeerIds.map((id) => {
           const p = io.sockets.sockets.get(id);
@@ -454,6 +693,10 @@ export function registerGroupRooms(io) {
 
         socket.emit("group:joined", { roomId, existingPeers, isModerator, role: meta.role });
         if (activeGame) socket.emit("group:game-state", publicGame(activeGame));
+        if (activeSong) {
+          socket.emit("arcade:song:round", publicSongGame(activeSong, activeSong.status === "result" || activeSong.status === "finished"));
+          socket.emit("arcade:song:score", { gameId: activeSong.gameId, players: songPlayers(activeSong) });
+        }
 
         // Late joiners hear whatever's already playing, roughly in sync —
         // the player seeks to (now - startedAt) on the client side.
@@ -605,6 +848,107 @@ export function registerGroupRooms(io) {
         io.to(roomId).emit("group:game-state", null);
       }
       ack?.({ ok: true });
+    }));
+
+    // --- Song Guess: all secret answer state stays in this process ---------
+    socket.on("arcade:song:start", safeHandler("arcade:song:start", async ({ roomId, ...config }, ack) => {
+      if (!canControlSong(socket, roomId)) {
+        ack?.({ ok: false, error: "Only the room host can control Song Guess." });
+        return;
+      }
+      const participants = [...(io.sockets.adapter.rooms.get(roomId) || [])]
+        .filter((socketId) => io.sockets.sockets.get(socketId)?.data?.groupRooms?.has(roomId));
+      if (participants.length < 4) {
+        ack?.({ ok: false, error: "Song Guess supports 4–12 players. Invite at least four people first." });
+        return;
+      }
+      const existing = songGames.get(roomId);
+      if (existing && ["live", "paused", "result"].includes(existing.status)) {
+        ack?.({ ok: false, error: "A Song Guess game is already running." });
+        return;
+      }
+      if (existing) { clearSongTimer(existing); songGames.delete(roomId); }
+      try {
+        const game = await createSongGame(io, roomId, config);
+        ack?.({ ok: true, gameId: game.gameId });
+      } catch (error) {
+        console.error("[groupRooms] song game start failed:", error.message);
+        ack?.({ ok: false, error: "No playable songs matched those filters. Try Trending, Popular, or Random." });
+      }
+    }));
+
+    socket.on("arcade:song:guess", safeHandler("arcade:song:guess", async ({ roomId, gameId, roundToken, answer, choice }, ack) => {
+      const result = await submitSongGuess(io, roomId, socket, { gameId, roundToken, answer, choice });
+      ack?.(result);
+    }));
+
+    socket.on("arcade:song:pause", safeHandler("arcade:song:pause", async ({ roomId, action = "pause" }, ack) => {
+      const game = songGames.get(roomId);
+      if (!canControlSong(socket, roomId) || !game) { ack?.({ ok: false, error: "Only the room host can pause Song Guess." }); return; }
+      if (action === "pause" && game.status === "live") {
+        game.pausedRemainingMs = Math.max(0, game.roundEndsAt - Date.now());
+        clearSongTimer(game);
+        game.status = "paused";
+        io.to(roomId).emit("arcade:song:round", publicSongGame(game));
+      } else if (action === "resume" && game.status === "paused") {
+        game.status = "live";
+        game.roundStartedAt = Date.now() - (game.timeLimitMs - game.pausedRemainingMs);
+        game.roundEndsAt = Date.now() + game.pausedRemainingMs;
+        io.to(roomId).emit("arcade:song:round", publicSongGame(game));
+        game.timer = setTimeout(() => finishSongRound(io, roomId, game), game.pausedRemainingMs + 250);
+      }
+      ack?.({ ok: true });
+    }));
+
+    socket.on("arcade:song:audio-failed", safeHandler("arcade:song:audio-failed", async ({ roomId, gameId, roundToken }, ack) => {
+      const game = songGames.get(roomId);
+      if (!game || game.gameId !== gameId || game.roundToken !== roundToken || !game.players[socket.data.fingerprint] || game.status !== "live") { ack?.({ ok: false }); return; }
+      const fallback = game.trackPool.find((track) => !game.usedTrackIds.has(track.id));
+      if (!fallback) { ack?.({ ok: false, error: "No fallback track is available." }); return; }
+      clearSongTimer(game);
+      game.usedTrackIds.add(fallback.id);
+      game.currentTrack = fallback;
+      game.nextTrack = game.trackPool.find((track) => !game.usedTrackIds.has(track.id)) || fallback;
+      game.currentOptions = songOptions(game);
+      game.roundToken = uuid();
+      game.roundStartedAt = Date.now();
+      game.roundEndsAt = game.roundStartedAt + game.timeLimitMs;
+      game.answered = new Set();
+      game.fallbackCount += 1;
+      io.to(roomId).emit("arcade:song:round", publicSongGame(game));
+      game.timer = setTimeout(() => finishSongRound(io, roomId, game), game.timeLimitMs + 250);
+      ack?.({ ok: true });
+    }));
+
+    socket.on("arcade:song:next", safeHandler("arcade:song:next", async ({ roomId, gameId }, ack) => {
+      const game = songGames.get(roomId);
+      if (!canControlSong(socket, roomId) || !game || game.gameId !== gameId || game.status !== "result") {
+        ack?.({ ok: false, error: "The next round is not ready." });
+        return;
+      }
+      clearSongTimer(game);
+      if (game.round >= game.totalRounds) finishSongGame(io, roomId, game);
+      else startSongRound(io, roomId, game);
+      ack?.({ ok: true });
+    }));
+
+    socket.on("arcade:song:end", safeHandler("arcade:song:end", async ({ roomId }, ack) => {
+      const game = songGames.get(roomId);
+      if (!canControlSong(socket, roomId) || !game) { ack?.({ ok: false, error: "Only the room host can end Song Guess." }); return; }
+      finishSongGame(io, roomId, game);
+      ack?.({ ok: true });
+    }));
+
+    socket.on("arcade:song:rematch", safeHandler("arcade:song:rematch", async ({ roomId, config = {} }, ack) => {
+      if (!canControlSong(socket, roomId)) { ack?.({ ok: false, error: "Only the room host can start a rematch." }); return; }
+      const existing = songGames.get(roomId);
+      if (existing) { clearSongTimer(existing); songGames.delete(roomId); }
+      try {
+        const game = await createSongGame(io, roomId, config);
+        ack?.({ ok: true, gameId: game.gameId });
+      } catch (error) {
+        ack?.({ ok: false, error: "The rematch could not find playable songs." });
+      }
     }));
 
     socket.on("group:music-pause", safeHandler("group:music-pause", async ({ roomId }, ack) => {

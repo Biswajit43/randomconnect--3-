@@ -18,6 +18,7 @@ export function useGroupWebRTC({ localStream }) {
   const negotiatingRef = useRef(new Set());
   const pendingIceRef = useRef(new Map());
   const reconnectTimersRef = useRef(new Map());
+  const recoveryAttemptsRef = useRef(new Map());
   const recoverPeerRef = useRef(() => {});
   const localStreamRef = useRef(localStream);
   const roomIdRef = useRef(null);
@@ -28,7 +29,20 @@ export function useGroupWebRTC({ localStream }) {
 
   const createPeer = useCallback(
     (peerId) => {
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceCandidatePoolSize: 10 });
+
+      const scheduleRecovery = () => {
+        if (!socket.connected || reconnectTimersRef.current.has(peerId)) return;
+        const attempts = recoveryAttemptsRef.current.get(peerId) || 0;
+        if (attempts >= 6) return;
+        recoveryAttemptsRef.current.set(peerId, attempts + 1);
+        const delay = Math.min(6000, 500 * (2 ** attempts));
+        const timer = window.setTimeout(() => {
+          reconnectTimersRef.current.delete(peerId);
+          recoverPeerRef.current(peerId);
+        }, delay);
+        reconnectTimersRef.current.set(peerId, timer);
+      };
 
       pc.onicecandidate = (e) => {
         if (e.candidate) {
@@ -47,18 +61,15 @@ export function useGroupWebRTC({ localStream }) {
 
       pc.onconnectionstatechange = () => {
         setConnectionStates((current) => ({ ...current, [peerId]: pc.connectionState }));
-        if (["failed", "disconnected"].includes(pc.connectionState)) {
-          if (!reconnectTimersRef.current.has(peerId) && socket.id && socket.id < peerId) {
-            const timer = window.setTimeout(() => {
-              reconnectTimersRef.current.delete(peerId);
-              recoverPeerRef.current(peerId);
-            }, pc.connectionState === "failed" ? 350 : 1200);
-            reconnectTimersRef.current.set(peerId, timer);
-          }
-        }
+        if (["connected", "completed"].includes(pc.connectionState)) recoveryAttemptsRef.current.delete(peerId);
+        if (["failed", "disconnected"].includes(pc.connectionState) && socket.id && socket.id < peerId) scheduleRecovery();
         if (pc.connectionState === "closed") {
           removePeer(peerId);
         }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        if (["failed", "disconnected"].includes(pc.iceConnectionState) && socket.id && socket.id < peerId) scheduleRecovery();
       };
 
       localStreamRef.current?.getTracks().forEach((track) => pc.addTrack(track, localStreamRef.current));
@@ -88,11 +99,17 @@ export function useGroupWebRTC({ localStream }) {
   // Called for each peer already in the room when we join — we initiate.
   const connectToExistingPeer = useCallback(
     async (peerId) => {
+      if (!socket.connected || negotiatingRef.current.has(peerId)) return;
       const pc = peersRef.current.get(peerId) || createPeer(peerId);
-      if (pc.signalingState === "closed") return;
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit("group:webrtc-offer", { roomId: roomIdRef.current, targetId: peerId, sdp: offer });
+      if (pc.signalingState === "closed" || pc.signalingState !== "stable") return;
+      negotiatingRef.current.add(peerId);
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit("group:webrtc-offer", { roomId: roomIdRef.current, targetId: peerId, sdp: offer });
+      } finally {
+        negotiatingRef.current.delete(peerId);
+      }
     },
     [createPeer]
   );
@@ -117,6 +134,7 @@ export function useGroupWebRTC({ localStream }) {
   const closeAll = useCallback(() => {
     reconnectTimersRef.current.forEach((timer) => clearTimeout(timer));
     reconnectTimersRef.current.clear();
+    recoveryAttemptsRef.current.clear();
     peersRef.current.forEach((pc) => pc.close());
     peersRef.current.clear();
     pendingIceRef.current.clear();

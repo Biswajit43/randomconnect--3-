@@ -7,6 +7,7 @@ import VideoTile from "../components/VideoTile.jsx";
 import { MusicPlayerBoundary } from "../components/MusicPlayer.jsx";
 import ReportModal from "../components/ReportModal.jsx";
 import QuickGamePanel from "../components/QuickGamePanel.jsx";
+import SongGuessPanel from "../components/SongGuessPanel.jsx";
 
 const CONVERSATION_SPARKS = [
   "What is something you could talk about for hours?",
@@ -45,6 +46,8 @@ export default function GroupRoom() {
   const [music, setMusic] = useState(null);
   const [game, setGame] = useState(null);
   const [gameError, setGameError] = useState("");
+  const [songGame, setSongGame] = useState(null);
+  const [songError, setSongError] = useState("");
   const [drawWord, setDrawWord] = useState("");
   const [reportTargetId, setReportTargetId] = useState(null);
   const [socketReady, setSocketReady] = useState(socket.connected);
@@ -169,6 +172,12 @@ export default function GroupRoom() {
     function onGameError({ message }) { setGameError(message || "The game is temporarily unavailable."); }
     function onGameDraw({ gameId, stroke }) { setGame((current) => current?.gameId === gameId ? { ...current, drawStrokes: [...(current.drawStrokes || []), stroke].slice(-500) } : current); }
     function onDrawWord({ word }) { setDrawWord(word || ""); }
+    function onSongStart({ gameId, settings }) { setSongError(""); setSongGame((current) => ({ ...(current || {}), gameId, settings, type: "song", status: "starting" })); }
+    function onSongRound(next) { if (next && typeof next === "object") { setSongGame(next); setSongError(""); } }
+    function onSongResult(next) { if (next && typeof next === "object") setSongGame(next); }
+    function onSongEnd(next) { if (next && typeof next === "object") setSongGame(next); }
+    function onSongGuess({ gameId, roundToken, answeredCount }) { setSongGame((current) => current?.gameId === gameId && current?.roundToken === roundToken ? { ...current, answeredCount } : current); }
+    function onSongScore({ gameId, players }) { setSongGame((current) => current?.gameId === gameId ? { ...current, players: Array.isArray(players) ? players : current.players } : current); }
     function identify() {
       if (identifySent.current) return;
       identifySent.current = true;
@@ -185,7 +194,17 @@ export default function GroupRoom() {
       setPhase("blocked");
     }
     function onConnect() { setSocketReady(true); identify(); }
-    function onDisconnect() { setSocketReady(false); }
+    function onDisconnect() {
+      // Socket.IO reconnects with a new socket id. Clear every old peer
+      // connection immediately; otherwise the next group:joined handshake
+      // creates new paths alongside stale connections and audio becomes
+      // intermittent or duplicated.
+      setSocketReady(false);
+      closeAll();
+      setPeers([]);
+      setPhase("connecting-media");
+      identifySent.current = false;
+    }
 
     socket.on("connect", onConnect); socket.on("disconnect", onDisconnect);
     socket.on("blocked", onBlocked); socket.on("group:join-rejected", onJoinRejected);
@@ -198,10 +217,11 @@ export default function GroupRoom() {
     socket.on("group:peer-unmuted", onPeerUnmuted); socket.on("group:music-state", onMusicState);
     socket.on("group:music-error", onMusicError); socket.on("group:waiting-list", onWaitingList);
     socket.on("group:game-state", onGameState); socket.on("group:game-error", onGameError); socket.on("group:game-draw", onGameDraw); socket.on("group:draw-word", onDrawWord);
+    socket.on("arcade:song:start", onSongStart); socket.on("arcade:song:round", onSongRound); socket.on("arcade:song:result", onSongResult); socket.on("arcade:song:end", onSongEnd); socket.on("arcade:song:guess", onSongGuess); socket.on("arcade:song:score", onSongScore);
     if (socket.connected) identify();
 
     return () => {
-      ["connect", "disconnect", "blocked", "group:join-rejected", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:demoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list", "group:game-state", "group:game-error", "group:game-draw", "group:draw-word"].forEach((event) => socket.off(event));
+      ["connect", "disconnect", "blocked", "group:join-rejected", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:demoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list", "group:game-state", "group:game-error", "group:game-draw", "group:draw-word", "arcade:song:start", "arcade:song:round", "arcade:song:result", "arcade:song:end", "arcade:song:guess", "arcade:song:score"].forEach((event) => socket.off(event));
     };
   }, [closeAll, connectToExistingPeer, navigate, roomId]);
 
@@ -303,6 +323,19 @@ export default function GroupRoom() {
   function stopGame() {
     socket.emit("group:game-stop", { roomId }, (result) => { if (!result?.ok) setGameError(result?.error || "The game could not stop."); });
   }
+  function startSong(config) {
+    setSongError("");
+    socket.emit("arcade:song:start", { roomId, ...config }, (result) => { if (!result?.ok) setSongError(result?.error || "Song Guess could not start."); });
+  }
+  function guessSong(answer, roundToken, callback) {
+    if (!songGame) return;
+    socket.emit("arcade:song:guess", { roomId, gameId: songGame.gameId, roundToken, answer }, callback);
+  }
+  function pauseSong(action) { socket.emit("arcade:song:pause", { roomId, action }, (result) => { if (!result?.ok) setSongError(result?.error || "Song Guess could not be updated."); }); }
+  function endSong() { socket.emit("arcade:song:end", { roomId }, (result) => { if (!result?.ok) setSongError(result?.error || "Song Guess could not end."); }); }
+  function nextSong() { socket.emit("arcade:song:next", { roomId, gameId: songGame?.gameId }); }
+  function rematchSong(config) { socket.emit("arcade:song:rematch", { roomId, config }, (result) => { if (!result?.ok) setSongError(result?.error || "Rematch could not start."); }); }
+  function songAudioFailed(gameId, roundToken) { socket.emit("arcade:song:audio-failed", { roomId, gameId, roundToken }); }
   function addConversationSpark() {
     setDraft(`Spark: ${CONVERSATION_SPARKS[sparkIndex]}`);
     setSparkIndex((current) => (current + 1) % CONVERSATION_SPARKS.length);
@@ -397,6 +430,7 @@ export default function GroupRoom() {
           </div>
         </div>
         <aside className="flex flex-col gap-4 min-h-0 lg:min-h-0">
+          <SongGuessPanel game={songGame} isModerator={isModerator} onStart={startSong} onGuess={guessSong} onPause={pauseSong} onEnd={endSong} onNext={nextSong} onRematch={rematchSong} onAudioFailed={songAudioFailed} error={songError} />
           <QuickGamePanel game={game} isModerator={isModerator} onStart={startGame} onTap={tapGame} onAnswer={answerGame} onDraw={drawGame} isDrawer={game?.drawerId === socket.id} drawWord={drawWord} isBombTurn={game?.bombTurnId === socket.id} canEndGame={["admin", "developer", "premium"].includes(role)} onStop={stopGame} error={gameError} />
           {isModerator && visibleWaiting.length > 0 && (
             <div className="bg-panel/85 rounded-2xl border border-violet/30 overflow-hidden surface-lift shrink-0">
