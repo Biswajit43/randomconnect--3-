@@ -107,6 +107,235 @@ const DRAW_WORDS = [
 ];
 const BOMB_PARTY_SYLLABLES = ["cat", "at", "an", "ar", "oo", "ee", "st", "ch", "in", "on", "ra", "sun"];
 
+
+// ======================= LAST CARD (UNO-style) ==========================
+const UNO_COLORS = ["red", "yellow", "green", "blue"];
+const UNO_TURN_MS = 30000;
+const UNO_CALL_GRACE_MS = 5000;
+
+function buildUnoDeck() {
+  const deck = [];
+  let n = 0;
+  UNO_COLORS.forEach((color) => {
+    deck.push({ id: `u${n++}`, color, value: "0" });
+    for (let i = 1; i <= 9; i += 1) {
+      deck.push({ id: `u${n++}`, color, value: String(i) });
+      deck.push({ id: `u${n++}`, color, value: String(i) });
+    }
+    ["skip", "reverse", "draw2"].forEach((value) => {
+      deck.push({ id: `u${n++}`, color, value });
+      deck.push({ id: `u${n++}`, color, value });
+    });
+  });
+  for (let i = 0; i < 4; i += 1) {
+    deck.push({ id: `u${n++}`, color: "wild", value: "wild" });
+    deck.push({ id: `u${n++}`, color: "wild", value: "wild4" });
+  }
+  return shuffle(deck);
+}
+
+function unoDraw(game, count) {
+  const drawn = [];
+  for (let i = 0; i < count; i += 1) {
+    if (!game.deck.length) {
+      const top = game.discard.pop();
+      game.deck = shuffle(game.discard);
+      game.discard = top ? [top] : [];
+      if (!game.deck.length) break;
+    }
+    drawn.push(game.deck.pop());
+  }
+  return drawn;
+}
+
+function unoSeatAt(game, steps) {
+  const size = game.order.length;
+  if (!size) return null;
+  return game.order[(((game.turnIndex + game.direction * steps) % size) + size) % size];
+}
+
+function unoAdvance(game, steps) {
+  const size = game.order.length;
+  if (!size) return;
+  game.turnIndex = (((game.turnIndex + game.direction * steps) % size) + size) % size;
+}
+
+function unoPlayable(card, topCard, activeColor) {
+  if (card.color === "wild") return true;
+  return card.color === activeColor || card.value === topCard.value;
+}
+
+function unoCounts(game) {
+  return game.order.map((socketId) => ({
+    socketId,
+    displayName: game.players[socketId]?.displayName || "Player",
+    count: (game.hands[socketId] || []).length,
+  }));
+}
+
+function emitUnoHands(io, game) {
+  game.order.forEach((socketId) => {
+    io.to(socketId).emit("group:uno-hand", { gameId: game.gameId, hand: game.hands[socketId] || [] });
+  });
+}
+
+function clearUnoCallTimer(game) {
+  if (game?.unoCallTimer) clearTimeout(game.unoCallTimer);
+  if (game) { game.unoCallTimer = null; game.unoMustCall = null; }
+}
+
+function startUnoTurn(io, roomId) {
+  const game = roomGames.get(roomId);
+  if (!game || game.type !== "uno") return;
+  if (game.timer) clearTimeout(game.timer);
+  game.status = "uno";
+  const turnId = unoSeatAt(game, 0);
+  game.unoTurnId = turnId;
+  game.unoTurnName = game.players[turnId]?.displayName || "Player";
+  game.roundEndsAt = Date.now() + UNO_TURN_MS;
+  emitGame(io, roomId);
+  emitUnoHands(io, game);
+  game.timer = setTimeout(() => {
+    const current = roomGames.get(roomId);
+    if (current !== game || game.unoTurnId !== turnId || game.status !== "uno") return;
+    game.hands[turnId] = [...(game.hands[turnId] || []), ...unoDraw(game, 1)];
+    game.roundWinnerName = `${game.unoTurnName} ran out of time`;
+    unoAdvance(game, 1);
+    startUnoTurn(io, roomId);
+  }, UNO_TURN_MS);
+}
+
+function finishUnoGame(io, roomId, winnerId) {
+  const game = roomGames.get(roomId);
+  if (!game) return;
+  clearUnoCallTimer(game);
+  const remaining = game.order
+    .filter((socketId) => socketId !== winnerId)
+    .reduce((total, socketId) => total + (game.hands[socketId] || []).length, 0);
+  if (game.players[winnerId]) game.players[winnerId].score += Math.max(1, remaining);
+  game.roundWinnerName = `${game.players[winnerId]?.displayName || "Player"} went out`;
+  finishGame(io, roomId);
+}
+
+function startUnoGame(io, roomId, game) {
+  game.deck = buildUnoDeck();
+  game.discard = [];
+  game.hands = {};
+  game.order = Object.keys(game.players);
+  game.direction = 1;
+  game.turnIndex = 0;
+  game.unoMustCall = null;
+  game.unoCallTimer = null;
+  game.order.forEach((socketId) => { game.hands[socketId] = unoDraw(game, 7); });
+
+  let first = unoDraw(game, 1)[0];
+  while (first && first.value === "wild4") {
+    game.deck.unshift(first);
+    first = unoDraw(game, 1)[0];
+  }
+  game.discard = [first];
+  game.unoColor = first.color === "wild" ? UNO_COLORS[Math.floor(Math.random() * 4)] : first.color;
+  startUnoTurn(io, roomId);
+}
+
+function handleUnoAction(io, roomId, socket, { gameId, action, cardId, chooseColor }) {
+  const game = roomGames.get(roomId);
+  if (!game || game.type !== "uno" || game.gameId !== gameId) return { ok: false, error: "That game is no longer running." };
+  if (!socket.data.groupRooms?.has(roomId)) return { ok: false, error: "You are not in this room." };
+
+  if (action === "call-uno") {
+    if (game.unoMustCall !== socket.id) return { ok: false, error: "Nothing to call right now." };
+    clearUnoCallTimer(game);
+    game.roundWinnerName = `${game.players[socket.id]?.displayName || "Player"} called Last Card!`;
+    emitGame(io, roomId);
+    return { ok: true };
+  }
+
+  if (game.status !== "uno") return { ok: false, error: "The game is not accepting moves." };
+  if (game.unoTurnId !== socket.id) return { ok: false, error: "It is not your turn." };
+
+  if (action === "draw") {
+    game.hands[socket.id] = [...(game.hands[socket.id] || []), ...unoDraw(game, 1)];
+    game.roundWinnerName = `${game.players[socket.id]?.displayName || "Player"} drew a card`;
+    unoAdvance(game, 1);
+    startUnoTurn(io, roomId);
+    return { ok: true };
+  }
+
+  if (action !== "play") return { ok: false, error: "Unknown move." };
+
+  const hand = game.hands[socket.id] || [];
+  const index = hand.findIndex((card) => card.id === cardId);
+  if (index === -1) return { ok: false, error: "That card is not in your hand." };
+
+  const card = hand[index];
+  const topCard = game.discard[game.discard.length - 1];
+  if (!unoPlayable(card, topCard, game.unoColor)) return { ok: false, error: "That card does not match the colour or number." };
+  if (card.color === "wild" && !UNO_COLORS.includes(chooseColor)) return { ok: false, error: "Pick a colour for your wild card." };
+
+  hand.splice(index, 1);
+  game.discard.push(card);
+  game.unoColor = card.color === "wild" ? chooseColor : card.color;
+  game.roundWinnerName = `${game.players[socket.id]?.displayName || "Player"} played ${card.value}`;
+
+  if (hand.length === 0) {
+    finishUnoGame(io, roomId, socket.id);
+    return { ok: true, won: true };
+  }
+
+  if (hand.length === 1) {
+    clearUnoCallTimer(game);
+    game.unoMustCall = socket.id;
+    game.unoCallTimer = setTimeout(() => {
+      const current = roomGames.get(roomId);
+      if (current !== game || game.unoMustCall !== socket.id) return;
+      game.hands[socket.id] = [...(game.hands[socket.id] || []), ...unoDraw(game, 2)];
+      game.unoMustCall = null;
+      game.unoCallTimer = null;
+      game.roundWinnerName = `${game.players[socket.id]?.displayName || "Player"} forgot to call (+2)`;
+      emitGame(io, roomId);
+      emitUnoHands(io, game);
+    }, UNO_CALL_GRACE_MS);
+  }
+
+  let steps = 1;
+  if (card.value === "skip") steps = 2;
+  if (card.value === "reverse") {
+    if (game.order.length === 2) steps = 2;
+    else game.direction *= -1;
+  }
+  if (card.value === "draw2" || card.value === "wild4") {
+    const victimId = unoSeatAt(game, 1);
+    const penalty = card.value === "draw2" ? 2 : 4;
+    if (victimId) game.hands[victimId] = [...(game.hands[victimId] || []), ...unoDraw(game, penalty)];
+    steps = 2;
+  }
+
+  unoAdvance(game, steps);
+  startUnoTurn(io, roomId);
+  return { ok: true };
+}
+
+function removeUnoPlayer(io, roomId, game, socketId) {
+  const wasTurn = game.unoTurnId === socketId;
+  const index = game.order.indexOf(socketId);
+  if (index !== -1) {
+    game.order.splice(index, 1);
+    delete game.hands[socketId];
+    if (game.unoMustCall === socketId) clearUnoCallTimer(game);
+    if (index < game.turnIndex) game.turnIndex -= 1;
+    if (game.order.length) game.turnIndex = ((game.turnIndex % game.order.length) + game.order.length) % game.order.length;
+  }
+  if (game.order.length < 2) {
+    if (game.order.length === 1) finishUnoGame(io, roomId, game.order[0]);
+    else finishGame(io, roomId);
+    return true;
+  }
+  if (wasTurn) { startUnoTurn(io, roomId); return true; }
+  return false;
+}
+// ===================== END LAST CARD ====================================
+
 const SONG_DEFAULTS = {
   rounds: 5,
   timeLimit: 15,
@@ -364,6 +593,14 @@ function publicGame(game) {
     bombTurnId: game.type === "bomb" ? game.bombTurnId || null : null,
     bombTurnName: game.type === "bomb" ? game.bombTurnName || null : null,
     bombUsedCount: game.type === "bomb" ? game.bombUsed?.size || 0 : 0,
+    unoTopCard: game.type === "uno" ? game.discard?.[game.discard.length - 1] || null : null,
+    unoColor: game.type === "uno" ? game.unoColor || null : null,
+    unoDirection: game.type === "uno" ? game.direction || 1 : 1,
+    unoTurnId: game.type === "uno" ? game.unoTurnId || null : null,
+    unoTurnName: game.type === "uno" ? game.unoTurnName || null : null,
+    unoMustCall: game.type === "uno" ? game.unoMustCall || null : null,
+    unoCounts: game.type === "uno" ? unoCounts(game) : [],
+    unoDeckCount: game.type === "uno" ? game.deck?.length || 0 : 0,
     players,
   };
 }
@@ -550,6 +787,10 @@ function startGameRound(io, roomId) {
     startBombTurn(io, roomId);
     return;
   }
+  if (game.type === "uno") {
+    startUnoTurn(io, roomId);
+    return;
+  }
   clearGameTimer(game);
   game.round += 1;
   game.status = "countdown";
@@ -576,10 +817,10 @@ function startRoomGame(io, roomId, type = "pulse") {
     .filter((peer) => peer?.data?.groupRooms?.has(roomId));
   const game = {
     gameId: uuid(),
-    type: ["draw", "bomb"].includes(type) ? type : "pulse",
+    type: ["draw", "bomb", "uno"].includes(type) ? type : "pulse",
     status: "countdown",
-    round: 0,
-    totalRounds: type === "bomb" ? 8 : GAME_ROUNDS,
+    round: type === "uno" ? 1 : 0,
+    totalRounds: type === "bomb" ? 8 : type === "uno" ? 1 : GAME_ROUNDS,
     players: Object.fromEntries(players.map((peer) => [peer.id, { socketId: peer.id, displayName: peer.data.displayName || "Guest", score: 0, streak: 0 }])),
     tapped: new Set(),
     drawStrokes: [],
@@ -587,6 +828,7 @@ function startRoomGame(io, roomId, type = "pulse") {
     timer: null,
   };
   roomGames.set(roomId, game);
+  if (game.type === "uno") { startUnoGame(io, roomId, game); return; }
   startGameRound(io, roomId);
 }
 
@@ -595,8 +837,10 @@ function removeGamePlayer(io, roomId, socketId) {
   if (!game) return;
   delete game.players[socketId];
   game.tapped?.delete(socketId);
+  if (game.type === "uno" && removeUnoPlayer(io, roomId, game, socketId)) return;
   if (Object.keys(game.players).length === 0) {
     clearGameTimer(game);
+    clearUnoCallTimer(game);
     roomGames.delete(roomId);
     return;
   }
@@ -834,6 +1078,10 @@ export function registerGroupRooms(io) {
       if (game.drawStrokes.length > 500) game.drawStrokes.shift();
       socket.to(roomId).emit("group:game-draw", { gameId, stroke: safeStroke });
       ack?.({ ok: true });
+    }));
+
+    socket.on("group:game-uno", safeHandler("group:game-uno", async (payload, ack) => {
+      ack?.(handleUnoAction(io, payload?.roomId, socket, payload || {}));
     }));
 
     socket.on("group:game-stop", safeHandler("group:game-stop", async ({ roomId }, ack) => {
@@ -1094,7 +1342,7 @@ export function registerGroupRooms(io) {
             if (typeof ack === "function") ack({ ok: true, music: true });
             return;
           }
- 
+
           const query = playMatch ? playMatch[1].trim() : pastedYouTubeUrl;
           try {
             const youtubeId = parseYouTubeId(query);

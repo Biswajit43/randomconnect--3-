@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import UnoTable from "./UnoTable.jsx";
 
-export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAnswer, onDraw, onStop, error, isDrawer, drawWord, isBombTurn, canEndGame }) {
+export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAnswer, onDraw, onStop, error, isDrawer, drawWord, isBombTurn, canEndGame, unoHand = [], isUnoTurn, mustCallUno, onUno }) {
   const [mode, setMode] = useState("pulse");
   const [submittedToken, setSubmittedToken] = useState(null);
   const [guess, setGuess] = useState("");
@@ -11,6 +12,7 @@ export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAn
   const activeStroke = useRef(null);
   const topPlayers = game?.players?.slice(0, 5) || [];
   const bomb = game?.type === "bomb";
+  const uno = game?.type === "uno";
   const draw = game?.type === "draw";
   const live = game?.status === "live";
   const countdown = game?.status === "countdown";
@@ -77,13 +79,14 @@ export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAn
           <h2 className="mt-1 font-display text-lg font-semibold text-white">{game?.title || "Room Arcade"}</h2>
           <p className="mt-1 text-xs text-mist">Short rounds, shared scores, zero awkward setup.</p>
         </div>
-        {game && <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] font-mono text-white/70">{game.round}/{game.totalRounds}</span>}
+        {game && !uno && <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] font-mono text-white/70">{game.round}/{game.totalRounds}</span>}
+        {game && uno && <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] font-mono text-white/70">{game.unoDeckCount} left</span>}
       </div>
 
       {!game && <div className="mt-4">
         <p className="text-sm leading-relaxed text-white/80">Pick a fast reaction challenge, Draw & Guess, or Bomb Party.</p>
         {isModerator ? <>
-          <div className="mt-4 grid grid-cols-3 gap-2">
+          <div className="mt-4 grid grid-cols-2 gap-2">
             <button onClick={() => setMode("pulse")} className={`rounded-xl border px-3 py-3 text-left transition ${mode === "pulse" ? "border-fuchsia-300/60 bg-fuchsia-400/15" : "border-white/10 bg-black/10 hover:bg-white/5"}`}>
               <span className="block text-sm font-semibold text-white">Pulse Clash</span><span className="mt-1 block text-[11px] text-mist">Tap first</span>
             </button>
@@ -93,15 +96,22 @@ export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAn
             <button onClick={() => setMode("bomb")} className={`rounded-xl border px-3 py-3 text-left transition ${mode === "bomb" ? "border-amber-300/70 bg-amber-300/15" : "border-white/10 bg-black/10 hover:bg-white/5"}`}>
               <span className="block text-sm font-semibold text-white">💣 Bomb Party</span><span className="mt-1 block text-[11px] text-mist">Word under pressure</span>
             </button>
+            <button onClick={() => setMode("uno")} className={`rounded-xl border px-3 py-3 text-left transition ${mode === "uno" ? "border-emerald-300/70 bg-emerald-300/15" : "border-white/10 bg-black/10 hover:bg-white/5"}`}>
+              <span className="block text-sm font-semibold text-white">🃏 Last Card</span><span className="mt-1 block text-[11px] text-mist">Match colour or number</span>
+            </button>
           </div>
-          <button onClick={() => onStart(mode)} className="mt-3 w-full rounded-xl bg-fuchsia-400 px-4 py-3 text-sm font-bold text-[#1b1022] shadow-lg shadow-fuchsia-500/15 hover:brightness-110">Start {mode === "bomb" ? "Bomb Party" : mode === "draw" ? "Draw & Guess" : "Pulse Clash"}</button>
+          <button onClick={() => onStart(mode)} className="mt-3 w-full rounded-xl bg-fuchsia-400 px-4 py-3 text-sm font-bold text-[#1b1022] shadow-lg shadow-fuchsia-500/15 hover:brightness-110">
+            Start {mode === "uno" ? "Last Card" : mode === "bomb" ? "Bomb Party" : mode === "draw" ? "Draw & Guess" : "Pulse Clash"}
+          </button>
         </> : <p className="mt-4 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-center text-xs text-mist">Waiting for a host or Music Mod to start.</p>}
       </div>}
 
       {game && <>
         <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3 text-center">
           {countdown && <><p className="text-sm font-semibold text-white">Get ready…</p><p className="mt-1 text-xs text-mist">Round {game.round} is about to begin</p></>}
+
           {live && <><p className="text-sm font-semibold text-fuchsia-100">NOW!</p><button onClick={onTap} className="mt-3 h-24 w-full rounded-2xl bg-fuchsia-400 text-4xl font-black text-[#1b1022] shadow-[0_0_35px_rgba(232,121,249,0.55)] transition hover:scale-[1.02] active:scale-95">TAP</button></>}
+
           {question && <>
             <p className="text-left text-sm font-semibold leading-relaxed text-white">{game.question}</p>
             <div className="mt-3 grid gap-2">
@@ -109,6 +119,7 @@ export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAn
             </div>
             <p className="mt-3 text-[11px] text-mist">{game.answeredCount || 0} answered · 15 seconds</p>
           </>}
+
           {draw && game.status === "drawing" && <>
             <p className="text-sm font-semibold text-white">{isDrawer ? `Your word: ${drawWord || game.maskedWord}` : `${game.drawerName} is drawing`}</p>
             <p className="mt-1 text-xs text-mist">{isDrawer ? `Draw it on the canvas · ${secondsLeft}s left` : `Guess: ${game.maskedWord} · ${secondsLeft}s left`}</p>
@@ -119,16 +130,25 @@ export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAn
             <canvas ref={canvasRef} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} className={`mt-3 h-48 w-full touch-none rounded-xl bg-[#101522] ${isDrawer ? "cursor-crosshair" : "cursor-default"}`} />
             {!isDrawer && <form onSubmit={submitGuess} className="mt-3 flex gap-2"><input value={guess} onChange={(event) => setGuess(event.target.value)} placeholder="Type your guess" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none" /><button className="rounded-lg bg-signal px-3 py-2 text-xs font-bold text-ink">Guess</button></form>}
           </>}
-          {bomb && game.status === "bombing" && <>
+
+          {uno && game.status === "uno" && (
+            <UnoTable game={game} hand={unoHand} isMyTurn={isUnoTurn} mustCall={mustCallUno} onAction={onUno} />
+          )}
+
+          {bomb && <>
             <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 p-3"><p className="text-3xl font-black tracking-[0.2em] text-amber-200">{game.bombSyllable?.toUpperCase()}</p><p className="mt-1 text-[11px] text-amber-100/80">Use these letters in a new word · {secondsLeft}s</p></div>
             {isBombTurn ? <form onSubmit={submitGuess} className="mt-3 flex gap-2"><input autoFocus value={guess} onChange={(event) => setGuess(event.target.value)} placeholder="Type a word…" className="min-w-0 flex-1 rounded-lg border border-amber-300/20 bg-black/20 px-3 py-2 text-xs text-white outline-none" /><button className="rounded-lg bg-amber-300 px-3 py-2 text-xs font-bold text-ink">Pass 💥</button></form> : <p className="mt-3 rounded-lg bg-white/5 px-3 py-2 text-xs text-mist">{game.bombTurnName} has the bomb. Watch closely!</p>}
           </>}
+
           {result && <><p className="text-sm font-semibold text-white">{game.winnerId ? `${game.roundWinnerName || game.winnerName} scored!` : game.roundWinnerName || "Round over."}</p><p className="mt-1 text-xs text-mist">Next round loading…</p></>}
+
           {finished && <><p className="text-sm font-semibold text-white">{game.finalWinnerName ? `🏆 ${game.finalWinnerName} takes the crown!` : "That was a draw."}</p><button onClick={isModerator ? () => onStart(game.type || mode) : undefined} disabled={!isModerator} className="mt-3 rounded-lg bg-fuchsia-400 px-3 py-2 text-xs font-bold text-[#1b1022] disabled:opacity-40">{isModerator ? "Rematch" : "Game complete"}</button></>}
         </div>
+
         <div className="mt-3 space-y-1.5">{topPlayers.map((player, index) => <div key={player.socketId} className="flex items-center justify-between rounded-lg border border-white/5 bg-black/10 px-2.5 py-2 text-xs"><span className="truncate text-white/85"><span className="mr-2 text-mist">{index + 1}</span>{player.displayName}</span><span className="font-mono text-fuchsia-200">{player.score} pt{player.streak > 1 ? ` · ${player.streak}🔥` : ""}</span></div>)}</div>
         {canEndGame ? <button onClick={onStop} className="mt-3 w-full rounded-lg border border-coral/30 px-3 py-2 text-xs font-semibold text-coral hover:bg-coral/10">End game (Admin)</button> : <p className="mt-3 text-center text-[10px] text-mist/60">The game finishes automatically after the final round.</p>}
       </>}
+
       {error && <p className="mt-2 text-xs text-coral">{error}</p>}
     </section>
   );
