@@ -35,9 +35,25 @@ export function useWebRTC({ localStream }) {
     };
 
     if (localStream) {
-      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
-    }
+      // --- FIXED AUDIO PRIORITY HERE ---
+      localStream.getTracks().forEach((track) => {
+        const sender = pc.addTrack(track, localStream);
+        try {
+          const parameters = sender.getParameters();
+          if (!parameters.encodings) parameters.encodings = [{}];
 
+          if (track.kind === "audio") {
+            parameters.encodings[0].networkPriority = "high";
+          } else if (track.kind === "video") {
+            parameters.encodings[0].networkPriority = "low";
+            parameters.encodings[0].maxBitrate = 150000;
+          }
+          sender.setParameters(parameters);
+        } catch (error) {
+          console.warn("Could not set track priority", error);
+        }
+      });
+    }
     return pc;
   }, [localStream]);
 
@@ -47,7 +63,6 @@ export function useWebRTC({ localStream }) {
       setConnectionState("connecting");
       const pc = createPeerConnection();
       pcRef.current = pc;
-
       if (isInitiator) {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
@@ -66,14 +81,6 @@ export function useWebRTC({ localStream }) {
     setConnectionState("idle");
   }, []);
 
-  /**
-   * Adds a video track that wasn't present when the call started (camera
-   * defaults to off — see Landing/ChatRoom). Renegotiates the existing
-   * connection so the remote side starts receiving it without a full
-   * reconnect. Safe regardless of who was the original offer-sender —
-   * renegotiation offers work symmetrically on an already-established
-   * connection.
-   */
   const addVideoTrack = useCallback(async (track, stream) => {
     const pc = pcRef.current;
     if (!pc || !roomIdRef.current) return;
@@ -97,13 +104,11 @@ export function useWebRTC({ localStream }) {
       await pc.setLocalDescription(answer);
       socket.emit("webrtc:answer", { roomId: roomIdRef.current, sdp: answer });
     }
-
     async function onAnswer({ sdp }) {
       const pc = pcRef.current;
       if (!pc) return;
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
     }
-
     async function onIceCandidate({ candidate }) {
       const pc = pcRef.current;
       if (!pc || !candidate) return;
@@ -113,11 +118,9 @@ export function useWebRTC({ localStream }) {
         console.warn("addIceCandidate failed", err);
       }
     }
-
     socket.on("webrtc:offer", onOffer);
     socket.on("webrtc:answer", onAnswer);
     socket.on("webrtc:ice-candidate", onIceCandidate);
-
     return () => {
       socket.off("webrtc:offer", onOffer);
       socket.off("webrtc:answer", onAnswer);

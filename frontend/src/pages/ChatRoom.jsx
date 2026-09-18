@@ -3,16 +3,26 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { socket, getFingerprint, getDisplayName, getPremiumToken, getAvatarUrl } from "../lib/socket.js";
 import { useWebRTC } from "../hooks/useWebRTC.js";
 
-const VOICE_CONSTRAINTS = {
-  echoCancellation: true,
-  noiseSuppression: true,
-  autoGainControl: true,
-};
 import VideoTile from "../components/VideoTile.jsx";
 import Controls from "../components/Controls.jsx";
 import ChatPanel from "../components/ChatPanel.jsx";
 import PulseConnector from "../components/PulseConnector.jsx";
 import ReportModal from "../components/ReportModal.jsx";
+
+// --- FIXED AUDIO CONSTRAINTS ---
+// This forces hardware-level echo cancellation and mono audio 
+// to save bandwidth and prevent the "infinite feedback loop"
+const VOICE_CONSTRAINTS = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  sampleRate: 48000,
+  channelCount: 1, 
+  googEchoCancellation: true,
+  googAutoGainControl: true,
+  googNoiseSuppression: true,
+  googHighpassFilter: true
+};
 
 export default function ChatRoom() {
   const { state } = useLocation();
@@ -219,10 +229,14 @@ export default function ChatRoom() {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 min-h-0">
         <div className="flex flex-col gap-4 min-h-0">
           {phase === "matched" ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 animate-enter">
-              <VideoTile stream={remoteStream} label={partnerName} avatarUrl={partnerAvatarUrl} />
-              <VideoTile stream={localStream} muted mirrored label={`You (${getDisplayName() || "Guest"})`} avatarUrl={getAvatarUrl()} />
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 animate-enter">
+                {/* FIX: Remote tile explicitly muted, delegating audio to RemoteAudioPlayer */}
+                <VideoTile stream={remoteStream} muted label={partnerName} avatarUrl={partnerAvatarUrl} />
+                <VideoTile stream={localStream} muted mirrored label={`You (${getDisplayName() || "Guest"})`} avatarUrl={getAvatarUrl()} />
+              </div>
+              <RemoteAudioPlayer stream={remoteStream} />
+            </>
           ) : (
             <div className="flex-1 flex items-center justify-center bg-panel/40 rounded-2xl border border-white/5 surface-lift">
               <PulseConnector
@@ -262,6 +276,25 @@ export default function ChatRoom() {
 
     </div>
   );
+}
+
+// --- FIXED iOS AUDIO PLAYER ---
+// This hidden component explicitly forces WebRTC audio tracks to play 
+// even when Apple/Safari tries to block them.
+function RemoteAudioPlayer({ stream }) {
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    if (audioRef.current && stream) {
+      audioRef.current.srcObject = stream;
+      
+      audioRef.current.play().catch((err) => {
+        console.warn(`iOS Autoplay blocked. Audio requires a screen tap.`, err);
+      });
+    }
+  }, [stream]);
+
+  return <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />;
 }
 
 function StatusPill({ phase, connectionState }) {

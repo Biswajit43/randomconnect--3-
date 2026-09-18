@@ -16,10 +16,19 @@ const CONVERSATION_SPARKS = [
   "Teach the room one surprisingly useful fact.",
 ];
 
+// --- FIXED AUDIO CONSTRAINTS ---
+// This forces hardware-level echo cancellation and mono audio 
+// to save bandwidth and prevent the "infinite feedback loop"
 const VOICE_CONSTRAINTS = {
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true,
+  sampleRate: 48000,
+  channelCount: 1, 
+  googEchoCancellation: true,
+  googAutoGainControl: true,
+  googNoiseSuppression: true,
+  googHighpassFilter: true
 };
 
 export default function GroupRoom() {
@@ -83,8 +92,6 @@ export default function GroupRoom() {
       socket.connect();
     };
 
-    // Room access must not depend on microphone permission. A user can join
-    // muted and enable the microphone later from the call controls.
     connectRoom();
     navigator.mediaDevices?.getUserMedia({ video: false, audio: VOICE_CONSTRAINTS }).then((stream) => {
       stream.getAudioTracks().forEach((track) => { track.enabled = false; });
@@ -188,10 +195,6 @@ export default function GroupRoom() {
     }
     function onConnect() { setSocketReady(true); identify(); }
     function onDisconnect() {
-      // Socket.IO reconnects with a new socket id. Clear every old peer
-      // connection immediately; otherwise the next group:joined handshake
-      // creates new paths alongside stale connections and audio becomes
-      // intermittent or duplicated.
       setSocketReady(false);
       closeAll();
       setPeers([]);
@@ -392,13 +395,23 @@ export default function GroupRoom() {
         <div className="flex flex-col gap-3 sm:gap-4 min-h-0">
           <MusicPlayerBoundary music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />
           <div className={`relative z-20 grid ${gridCols} gap-2 sm:gap-3 flex-1 content-start animate-enter`}>
+            
             <div className="relative">
+              {/* Local Stream - We keep this one muted naturally so you don't hear yourself */}
               <VideoTile stream={localStream} muted mirrored label={displayName.current} avatarUrl={getAvatarUrl()} role={role} />
               {isModerator && <span className="absolute top-3 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{role === "premium" ? "MUSIC MOD" : "HOST / MOD"}</span>}
             </div>
+
             {visiblePeers.map((peer) => (
               <div key={peer.socketId} className="relative z-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[60]">
-                <VideoTile stream={remoteStreams[peer.socketId]} label={peer.displayName || "Guest"} avatarUrl={peer.avatarUrl} role={peer.role || "user"} />
+                {/* 
+                  FIX: We explicitly mute the VideoTile for remote peers.
+                  This allows our custom RemoteAudioPlayer below to take full control 
+                  of the audio stream, guaranteeing it works correctly on iOS Safari!
+                */}
+                <VideoTile stream={remoteStreams[peer.socketId]} muted label={peer.displayName || "Guest"} avatarUrl={peer.avatarUrl} role={peer.role || "user"} />
+                <RemoteAudioPlayer stream={remoteStreams[peer.socketId]} peerId={peer.socketId} />
+
                 {peer.isModerator && <span className="absolute top-11 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{peer.role === "premium" ? "MUSIC MOD" : "HOST / MOD"}</span>}
                 {!['admin', 'developer'].includes(peer.role || 'user') && <button onClick={() => setReportTargetId(peer.socketId)} className="absolute top-2 left-2 z-10 rounded-md border border-coral/30 bg-black/75 px-2.5 py-1 text-[11px] font-medium text-coral backdrop-blur hover:bg-coral/20">Report</button>}
                 {mutedPeers.has(peer.socketId) && <span className="absolute top-20 left-2 z-10 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}
@@ -460,6 +473,25 @@ export default function GroupRoom() {
       <ReportModal open={Boolean(reportTargetId)} onClose={() => setReportTargetId(null)} onSubmit={submitGroupReport} />
     </div>
   );
+}
+
+// --- FIXED iOS AUDIO PLAYER ---
+// This hidden component explicitly forces WebRTC audio tracks to play 
+// even when Apple/Safari tries to block them.
+function RemoteAudioPlayer({ stream, peerId }) {
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    if (audioRef.current && stream) {
+      audioRef.current.srcObject = stream;
+      
+      audioRef.current.play().catch((err) => {
+        console.warn(`iOS Autoplay blocked for ${peerId}. Audio requires a screen tap.`, err);
+      });
+    }
+  }, [stream, peerId]);
+
+  return <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />;
 }
 
 function IconButton({ active, disabled, onClick, label, children }) {

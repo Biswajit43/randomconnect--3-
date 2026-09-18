@@ -14,6 +14,7 @@ const ICE_SERVERS = buildIceServers();
 export function useGroupWebRTC({ localStream }) {
   const [remoteStreams, setRemoteStreams] = useState({}); // socketId -> MediaStream
   const [connectionStates, setConnectionStates] = useState({});
+
   const peersRef = useRef(new Map()); // socketId -> RTCPeerConnection
   const negotiatingRef = useRef(new Set());
   const pendingIceRef = useRef(new Map());
@@ -72,7 +73,28 @@ export function useGroupWebRTC({ localStream }) {
         if (["failed", "disconnected"].includes(pc.iceConnectionState) && socket.id && socket.id < peerId) scheduleRecovery();
       };
 
-      localStreamRef.current?.getTracks().forEach((track) => pc.addTrack(track, localStreamRef.current));
+      // --- FIXED AUDIO PRIORITY HERE ---
+      localStreamRef.current?.getTracks().forEach((track) => {
+        const sender = pc.addTrack(track, localStreamRef.current);
+        
+        // Force WebRTC to prioritize Audio over Video to prevent robotic voices
+        try {
+          const parameters = sender.getParameters();
+          if (!parameters.encodings) parameters.encodings = [{}];
+          
+          if (track.kind === "audio") {
+            parameters.encodings[0].networkPriority = "high";
+          } else if (track.kind === "video") {
+            parameters.encodings[0].networkPriority = "low";
+            parameters.encodings[0].maxBitrate = 150000; // Cap video to save bandwidth
+          }
+          
+          sender.setParameters(parameters);
+        } catch (error) {
+          console.warn("Could not set track priority", error);
+        }
+      });
+
       peersRef.current.set(peerId, pc);
       return pc;
     },
@@ -96,7 +118,6 @@ export function useGroupWebRTC({ localStream }) {
     });
   }, []);
 
-  // Called for each peer already in the room when we join — we initiate.
   const connectToExistingPeer = useCallback(
     async (peerId) => {
       if (!socket.connected || negotiatingRef.current.has(peerId)) return;
@@ -143,12 +164,6 @@ export function useGroupWebRTC({ localStream }) {
     negotiatingRef.current.clear();
   }, []);
 
-  /**
-   * Adds a video track (camera turned on after joining audio-only — see
-   * GroupRoom) to every existing mesh connection and renegotiates each one
-   * individually. New peers who join later pick it up automatically via
-   * createPeer(), since it reads tracks off the same localStream object.
-   */
   const addVideoTrackToAllPeers = useCallback(async (track, stream) => {
     for (const [peerId, pc] of peersRef.current.entries()) {
       pc.addTrack(track, stream);
@@ -165,8 +180,6 @@ export function useGroupWebRTC({ localStream }) {
     }
   }, []);
 
-  // The microphone can finish loading after the room has joined. Add any
-  // missing local tracks to existing connections and renegotiate them once.
   const syncLocalTracks = useCallback(async () => {
     if (!localStream) return;
     for (const [peerId, pc] of peersRef.current.entries()) {
@@ -195,9 +208,6 @@ export function useGroupWebRTC({ localStream }) {
 
   useEffect(() => {
     async function onOffer({ roomId, fromId, sdp }) {
-      // Reuse the existing connection if one's already open — this is what
-      // makes renegotiation (e.g. adding a video track after the call has
-      // started) work instead of silently replacing an established peer.
       try {
         let pc = peersRef.current.get(fromId) || createPeer(fromId);
         if (["failed", "closed"].includes(pc.connectionState)) {
