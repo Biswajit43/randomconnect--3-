@@ -341,7 +341,7 @@ export default function Landing() {
                 />
                 I agree not to share sexual content, harass others, or involve minors.
               </label>
-
+ 
               <button
                 onClick={enter}
                 disabled={!canEnter || premiumBusy}
