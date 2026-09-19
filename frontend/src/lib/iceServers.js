@@ -1,25 +1,35 @@
 /**
- * Builds the ICE server list using hardcoded Xirsys credentials 
- * to guarantee TURN works and fixes NAT/firewall audio issues.
+ * Builds the ICE server list using hardcoded Metered TURN credentials.
+ * Provides STUN + TURN relay for NAT/firewall traversal across networks.
  */
 export function buildIceServers() {
   // Basic Google STUN for fast connections
   const stunServer = { urls: "stun:stun.l.google.com:19302" };
 
-  // Hardcoded Xirsys TURN/STUN Server
-  const xirsysServer = {
-    urls: [
-      "stun:fr-turn4.xirsys.com",
-      "turn:fr-turn4.xirsys.com:80?transport=udp",
-      "turn:fr-turn4.xirsys.com:3478?transport=udp",
-      "turn:fr-turn4.xirsys.com:80?transport=tcp",
-      "turn:fr-turn4.xirsys.com:3478?transport=tcp",
-      "turns:fr-turn4.xirsys.com:443?transport=tcp",
-      "turns:fr-turn4.xirsys.com:5349?transport=tcp"
-    ],
-    username: "JAYE5uonAqEf2-t6qgIWHxUVw592lzosAbvVcr6Q8bl7oaT0OXeRjsxIE1fqjGOiAAAAAGquA9dzdHJpdmVyMDE=",
-    credential: "a8d30d12-b3db-11f1-89eb-7238a2d1250c"
+  // Metered STUN (redundant with Google STUN, but harmless)
+  const meteredStun = { urls: "stun:stun.relay.metered.ca:80" };
+
+  // Metered TURN (UDP, TCP, and TLS fallbacks)
+  const turnUdp = {
+    urls: "turn:global.relay.metered.ca:80",
+    username: "f8f5cd006693653d883f94fe",
+    credential: "j9+nu3Srt896msGU",
   };
 
-  return [stunServer, xirsysServer];
+  const turnTcp = {
+    urls: "turn:global.relay.metered.ca:80?transport=tcp",
+    username: "f8f5cd006693653d883f94fe",
+    credential: "j9+nu3Srt896msGU",
+  };
+
+  const turnTls = {
+    urls: [
+      "turn:global.relay.metered.ca:443",
+      "turns:global.relay.metered.ca:443?transport=tcp",
+    ],
+    username: "f8f5cd006693653d883f94fe",
+    credential: "j9+nu3Srt896msGU",
+  };
+
+  return [stunServer, meteredStun, turnUdp, turnTcp, turnTls];
 }
