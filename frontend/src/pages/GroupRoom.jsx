@@ -24,7 +24,7 @@ const VOICE_CONSTRAINTS = {
   noiseSuppression: true,
   autoGainControl: true,
   sampleRate: 48000,
-  channelCount: 1, 
+  channelCount: 1,
   googEchoCancellation: true,
   googAutoGainControl: true,
   googNoiseSuppression: true,
@@ -394,8 +394,8 @@ export default function GroupRoom() {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 sm:gap-5 min-h-0">
         <div className="flex flex-col gap-3 sm:gap-4 min-h-0">
           <MusicPlayerBoundary music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />
-          <div className={`relative z-20 grid ${gridCols} gap-2 sm:gap-3 flex-1 content-start animate-enter`}>
-            
+          <div className={`relative z-0 grid ${gridCols} gap-2 sm:gap-3 flex-1 content-start animate-enter`}>
+
             <div className="relative">
               {/* Local Stream - We keep this one muted naturally so you don't hear yourself */}
               <VideoTile stream={localStream} muted mirrored label={displayName.current} avatarUrl={getAvatarUrl()} role={role} />
@@ -421,7 +421,7 @@ export default function GroupRoom() {
               </div>
             ))}
           </div>
-          <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
+          <div className="relative sticky bottom-0 z-50 pointer-events-auto flex flex-wrap items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
             <IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton>
             <IconButton onClick={toggleCam} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton>
             <IconButton onClick={flipCamera} disabled={!camOn} active={false} label="Switch front and rear camera">↔</IconButton>
@@ -484,7 +484,7 @@ function RemoteAudioPlayer({ stream, peerId }) {
   useEffect(() => {
     if (audioRef.current && stream) {
       audioRef.current.srcObject = stream;
-      
+
       audioRef.current.play().catch((err) => {
         console.warn(`iOS Autoplay blocked for ${peerId}. Audio requires a screen tap.`, err);
       });
@@ -494,16 +494,28 @@ function RemoteAudioPlayer({ stream, peerId }) {
   return <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />;
 }
 
-function IconButton({ active, disabled, onClick, label, children }) {
+function IconButton({ active, disabled = false, onClick, label, children }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
       title={label}
-      className={`w-14 h-14 sm:w-12 sm:h-12 rounded-full flex items-center justify-center border active:scale-95 transition text-lg touch-manipulation ${disabled ? "bg-coral/10 border-coral/30 text-coral opacity-70 cursor-not-allowed" : active ? "bg-panel2 border-white/10 text-white" : "bg-coral/10 border-coral/30 text-coral"}`}
+      className={`relative z-50 pointer-events-auto touch-manipulation cursor-pointer
+        w-14 h-14 sm:w-12 sm:h-12 rounded-full
+        flex items-center justify-center border
+        active:scale-95 transition text-lg
+        ${disabled
+          ? "bg-coral/10 border-coral/30 text-coral opacity-70 cursor-not-allowed"
+          : active
+            ? "bg-panel2 border-white/10 text-white"
+            : "bg-coral/10 border-coral/30 text-coral"
+        }`}
     >
-      {children}
+      <span className="pointer-events-none">
+        {children}
+      </span>
     </button>
   );
 }
