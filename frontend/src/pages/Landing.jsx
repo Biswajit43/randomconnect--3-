@@ -124,7 +124,7 @@ export default function Landing() {
           <Link to="/faq" className="hidden sm:inline text-mist hover:text-white">FAQ</Link>
           <button
             onClick={() => setStaffAccessOpen(true)}
-            className="text-signal2 hover:text-signal underline underline-offset-2"
+            className="ui-button ui-button-quiet min-h-9 px-3 text-xs text-signal2 underline underline-offset-2"
           >
             Staff access
           </button>
@@ -349,7 +349,7 @@ export default function Landing() {
               <button
                 onClick={enter}
                 disabled={!canEnter || premiumBusy}
-                className="w-full py-4 sm:py-3.5 rounded-xl bg-signal text-ink font-display font-semibold text-base sm:text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:brightness-110 active:scale-[0.98] transition shadow-lg shadow-signal/20"
+                className="ui-button ui-button-primary w-full py-4 text-base shadow-lg shadow-signal/20 sm:py-3.5 sm:text-sm disabled:opacity-30"
               >
                 {premiumBusy ? "Activating premium…" : "Continue securely"} <span aria-hidden="true">→</span>
               </button>
@@ -414,7 +414,7 @@ function StaffAccessModal({ onClose }) {
             <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-signal">Private access</p>
             <h2 className="mt-1 font-display text-xl font-semibold text-white">Enter as staff</h2>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close staff access" className="text-xl text-mist hover:text-white">×</button>
+          <button type="button" onClick={onClose} aria-label="Close staff access" className="ui-icon-button h-11 w-11 text-xl text-mist hover:text-white">×</button>
         </div>
         <p className="mt-2 text-sm text-mist">The server verifies your account, role, and registered device before you enter.</p>
 
@@ -428,7 +428,7 @@ function StaffAccessModal({ onClose }) {
           className="mt-4 w-full rounded-lg border border-white/10 bg-ink/60 px-3 py-3 text-white outline-none focus-visible:outline-signal"
         />
         {error && <p className="mt-3 text-sm text-coral">{error}</p>}
-        <button disabled={busy || !password} className="mt-4 w-full rounded-lg bg-signal px-4 py-3 text-sm font-semibold text-ink disabled:opacity-40">
+        <button disabled={busy || !password} className="ui-button ui-button-primary mt-4 w-full px-4 text-sm disabled:opacity-40">
           {busy ? "Verifying..." : "Continue securely"}
         </button>
       </form>

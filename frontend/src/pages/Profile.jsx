@@ -102,7 +102,7 @@ export default function Profile() {
               <p className="mt-3 text-sm text-mist">{isPermanentStaff ? "Your verified staff account has permanent Premium identity privileges." : "Every successful friend redemption adds another 30 days to your current Premium time."}</p>
             </article>
 
-            {!isPermanentStaff && premium?.active && <article className="rounded-2xl border border-signal/20 bg-signal/5 p-5"><p className="text-xs uppercase tracking-wider text-signal2">Account recovery</p><h2 className="mt-1 font-display text-lg font-semibold text-white">Keep your Premium safe</h2><p className="mt-2 text-sm text-mist">Browser history or site data can remove your local device identity. Create a recovery code before that happens.</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={createRecovery} className="rounded-lg bg-signal px-3 py-2 text-xs font-semibold text-ink hover:brightness-110">Create recovery code</button>{recoveryCode && <button onClick={copyRecovery} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white hover:bg-white/5">Copy code</button>}</div>{recoveryCode && <p className="mt-3 break-all rounded-lg border border-white/10 bg-panel2 px-3 py-2 font-mono text-xs text-signal2">{recoveryCode}</p>}{recoveryMessage && <p className="mt-2 text-xs text-mist">{recoveryMessage}</p>}</article>}
+            {!isPermanentStaff && premium?.active && <article className="rounded-2xl border border-signal/20 bg-signal/5 p-5"><p className="text-xs uppercase tracking-wider text-signal2">Account recovery</p><h2 className="mt-1 font-display text-lg font-semibold text-white">Keep your Premium safe</h2><p className="mt-2 text-sm text-mist">Browser history or site data can remove your local device identity. Create a recovery code before that happens.</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={createRecovery} className="ui-button ui-button-primary px-3 text-xs">Create recovery code</button>{recoveryCode && <button onClick={copyRecovery} className="ui-button ui-button-quiet px-3 text-xs text-white">Copy code</button>}</div>{recoveryCode && <p className="mt-3 break-all rounded-lg border border-white/10 bg-panel2 px-3 py-2 font-mono text-xs text-signal2">{recoveryCode}</p>}{recoveryMessage && <p className="mt-2 text-xs text-mist">{recoveryMessage}</p>}</article>}
 
             <article className="rounded-xl border border-white/10 bg-panel/80 p-5 animate-enter">
               <div className="flex items-center gap-4">
@@ -114,7 +114,7 @@ export default function Profile() {
                   {canUsePremiumIdentity ? "Upload profile photo" : "Premium photo feature"}
                   <input type="file" accept="image/png,image/jpeg,image/webp" onChange={updateAvatar} className="sr-only" />
                 </label>
-                {avatar && <button onClick={removeAvatar} className="rounded-lg border border-coral/30 px-3 py-2 text-xs text-coral hover:bg-coral/10">Remove photo</button>}
+                {avatar && <button onClick={removeAvatar} className="ui-button ui-button-danger px-3 text-xs">Remove photo</button>}
               </div>
               {avatarMessage && <p className="mt-2 text-xs text-signal2">{avatarMessage}</p>}
             </article>

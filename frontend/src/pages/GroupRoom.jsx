@@ -388,7 +388,7 @@ export default function GroupRoom() {
       {phase === "joined" && (!hasLiveAudio || hasConnectionIssue) && (
         <div className="mb-3 mx-auto flex max-w-2xl items-center justify-between gap-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-xs text-amber-100">
           <span>{!hasLiveAudio ? "Your microphone is not connected yet. You can still listen, or tap the mic button to retry." : "Some audio connections are recovering. Stay in the room while we reconnect them."}</span>
-          {!hasLiveAudio && <button onClick={toggleMic} className="shrink-0 rounded-lg border border-amber-200/30 px-3 py-1.5 font-semibold hover:bg-amber-200/10">Retry mic</button>}
+          {!hasLiveAudio && <button onClick={toggleMic} className="ui-button shrink-0 border-amber-200/30 bg-amber-200/10 px-3 text-xs text-amber-100">Retry mic</button>}
         </div>
       )}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 sm:gap-5 min-h-0">
@@ -413,7 +413,7 @@ export default function GroupRoom() {
                 <RemoteAudioPlayer stream={remoteStreams[peer.socketId]} peerId={peer.socketId} />
 
                 {peer.isModerator && <span className="absolute top-11 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{peer.role === "premium" ? "MUSIC MOD" : "HOST / MOD"}</span>}
-                {!['admin', 'developer'].includes(peer.role || 'user') && <button onClick={() => setReportTargetId(peer.socketId)} className="absolute top-2 left-2 z-10 rounded-md border border-coral/30 bg-black/75 px-2.5 py-1 text-[11px] font-medium text-coral backdrop-blur hover:bg-coral/20">Report</button>}
+                {!['admin', 'developer'].includes(peer.role || 'user') && <button onClick={() => setReportTargetId(peer.socketId)} className="ui-button ui-button-danger absolute left-2 top-2 z-10 min-h-9 px-2.5 text-[11px] font-medium backdrop-blur">Report</button>}
                 {mutedPeers.has(peer.socketId) && <span className="absolute top-20 left-2 z-10 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}
                 {isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator || (role === "admin" && ["user", "premium"].includes(peer.role || "user"))) && (
                   <ModMenu isDeveloper={role === "developer"} isAdmin={role === "admin"} isPremium={role === "premium"} isModerator={peer.isModerator} targetRole={peer.role || "user"} isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} onDemote={() => mod("group:mod-demote", peer.socketId)} />
@@ -425,7 +425,7 @@ export default function GroupRoom() {
             <IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton>
             <IconButton onClick={toggleCam} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton>
             <IconButton onClick={flipCamera} disabled={!camOn} active={false} label="Switch front and rear camera">↔</IconButton>
-            <button onClick={leave} className="px-5 sm:px-6 py-3 rounded-full bg-coral text-ink font-display font-semibold text-sm hover:brightness-110 active:scale-95 transition shadow-lg shadow-coral/10 shrink-0">Leave room</button>
+            <button onClick={leave} className="ui-button ui-button-danger shrink-0 bg-coral px-5 text-sm text-ink shadow-lg shadow-coral/10 sm:px-6">Leave room</button>
           </div>
         </div>
         <aside className="flex flex-col gap-4 min-h-0 lg:min-h-0">
@@ -438,8 +438,8 @@ export default function GroupRoom() {
                   <div key={person.socketId} className="flex items-center justify-between text-sm gap-2">
                     <span className="text-white/90 truncate">{person.displayName || "Guest"}</span>
                     <div className="flex gap-1.5 shrink-0">
-                      <button onClick={() => mod("group:mod-admit", person.socketId)} className="px-2 py-1 rounded-md bg-signal/15 text-signal2 text-xs">Admit</button>
-                      <button onClick={() => mod("group:mod-deny", person.socketId)} className="px-2 py-1 rounded-md bg-coral/15 text-coral text-xs">Deny</button>
+                      <button onClick={() => mod("group:mod-admit", person.socketId)} className="ui-button ui-button-primary min-h-9 px-2 text-xs">Admit</button>
+                      <button onClick={() => mod("group:mod-deny", person.socketId)} className="ui-button ui-button-danger min-h-9 px-2 text-xs">Deny</button>
                     </div>
                   </div>
                 ))}
@@ -452,7 +452,7 @@ export default function GroupRoom() {
                 <p className="font-display text-sm text-white">Room chat</p>
                 <p className="text-[11px] text-mist/60 mt-0.5">Say hi and keep it respectful.</p>
               </div>
-              <div className="flex items-center gap-1.5 shrink-0"><button onClick={addConversationSpark} className="px-2 py-1 rounded-md bg-violet/10 text-violet text-[11px] hover:bg-violet/20">✦ spark</button>{isModerator && <button onClick={() => setDraft("/play ")} className="px-2 py-1 rounded-md bg-signal/10 text-signal2 text-[11px] hover:bg-signal/20">+ song</button>}</div>
+              <div className="flex items-center gap-1.5 shrink-0"><button onClick={addConversationSpark} className="ui-button ui-button-violet min-h-9 px-2 text-[11px]">✦ spark</button>{isModerator && <button onClick={() => setDraft("/play ")} className="ui-button ui-button-primary min-h-9 bg-signal/10 px-2 text-[11px] text-signal2">+ song</button>}</div>
             </div>
             <div ref={chatScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-2">
               {visibleMessages.length === 0 && <p className="text-sm text-mist/60">The room is quiet. Say hello.</p>}
@@ -545,7 +545,7 @@ function ModMenu({ isDeveloper, isAdmin, isPremium, isModerator, targetRole, isM
       {open && (
         <div className="absolute right-0 mt-1 w-44 bg-panel2 border border-white/10 rounded-lg overflow-hidden text-sm shadow-2xl z-50">
           {items.map(([label, action]) => (
-            <button key={label} onClick={() => { action(); setOpen(false); }} className="w-full text-left px-3 py-2.5 text-white/90 hover:bg-white/5 active:bg-white/10 touch-manipulation">
+            <button key={label} onClick={() => { action(); setOpen(false); }} className="ui-button ui-button-quiet min-h-11 w-full justify-start rounded-none px-3 text-left text-white/90 touch-manipulation">
               {label}
             </button>
           ))}
@@ -562,7 +562,7 @@ function EmptyState({ title, text, action, onAction }) {
         <div className="w-16 h-16 rounded-2xl bg-panel2 border border-white/10 mx-auto mb-5 animate-drift" />
         <h2 className="font-display text-2xl text-white mb-2">{title}</h2>
         <p className="text-mist max-w-sm">{text}</p>
-        {action && <button onClick={onAction} className="mt-6 px-5 py-2.5 rounded-lg bg-signal text-ink font-semibold hover:brightness-110 transition">{action}</button>}
+        {action && <button onClick={onAction} className="ui-button ui-button-primary mt-6 px-5">{action}</button>}
       </div>
     </div>
   );

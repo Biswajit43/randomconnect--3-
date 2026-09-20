@@ -410,16 +410,23 @@ textarea {
   font-weight: 600;
   justify-content: center;
   min-height: 2.75rem;
-  transition: transform 180ms ease, filter 180ms ease, background-color 180ms ease, border-color 180ms ease;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.16), 0 2px 0 rgba(0, 0, 0, 0.18), 0 8px 18px rgba(0, 0, 0, 0.12);
+  transition: transform 180ms ease, filter 180ms ease, background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
-.ui-button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-2px); }
+.ui-button:hover:not(:disabled) { box-shadow: inset 0 1px rgba(255, 255, 255, 0.2), 0 3px 0 rgba(0, 0, 0, 0.16), 0 12px 24px rgba(0, 0, 0, 0.18); filter: brightness(1.08); transform: translateY(-2px); }
+.ui-button:active:not(:disabled) { box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(0, 0, 0, 0.18); transform: translateY(1px); }
 .ui-button-primary { background: var(--signal); color: var(--ink); }
 .ui-button-muted { background: var(--panel-raised); border-color: var(--line); color: var(--mist); }
 .ui-button-muted:hover:not(:disabled) { color: #f4fffb; }
 .ui-button-danger { background: rgba(255, 107, 107, 0.12); border-color: rgba(255, 107, 107, 0.35); color: #ff9a9a; }
 .ui-icon-button { border-radius: 999px; transition: transform 180ms ease, filter 180ms ease, background-color 180ms ease, border-color 180ms ease; }
 .ui-icon-button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-2px); }
+
+.ui-button-quiet { background: rgba(255, 255, 255, 0.05); border-color: var(--line); color: var(--mist); }
+.ui-button-quiet:hover:not(:disabled) { color: #f4fffb; }
+.ui-button-violet { background: rgba(184, 164, 255, 0.16); border-color: rgba(184, 164, 255, 0.42); color: #d8ccff; }
+.ui-button-violet:hover:not(:disabled) { background: rgba(184, 164, 255, 0.24); }
 
 
 /* =========================================================
