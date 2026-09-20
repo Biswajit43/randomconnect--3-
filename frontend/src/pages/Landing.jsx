@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import PulseConnector from "../components/PulseConnector.jsx";
 import { getDisplayName, setDisplayName, getFingerprint } from "../lib/socket.js";
@@ -118,6 +119,9 @@ export default function Landing() {
           random<span className="text-signal">connect</span>
         </span>
         <div className="flex items-center gap-3 text-xs font-mono text-mist">
+          <Link to="/about" className="hidden sm:inline text-mist hover:text-white">About</Link>
+          <Link to="/safety" className="hidden sm:inline text-mist hover:text-white">Safety</Link>
+          <Link to="/faq" className="hidden sm:inline text-mist hover:text-white">FAQ</Link>
           <button
             onClick={() => setStaffAccessOpen(true)}
             className="text-signal2 hover:text-signal underline underline-offset-2"
@@ -359,6 +363,10 @@ export default function Landing() {
 
       <footer className="relative z-10 hidden lg:block px-6 py-5 text-center text-xs text-mist/60 font-mono">
         You share only what you choose · leave anytime · nothing follows you home
+        <span className="mx-3 text-white/15">|</span>
+        <Link to="/privacy" className="text-signal2 hover:text-signal underline underline-offset-2">Privacy</Link>
+        <Link to="/terms" className="ml-3 text-signal2 hover:text-signal underline underline-offset-2">Terms</Link>
+        <Link to="/contact" className="ml-3 text-signal2 hover:text-signal underline underline-offset-2">Contact</Link>
         <button
           onClick={() => setStaffAccessOpen(true)}
           className="ml-4 text-signal2 hover:text-signal underline underline-offset-2"

@@ -6,4 +6,11 @@
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
+  <url><loc>https://randomchats.me/about</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://randomchats.me/contact</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://randomchats.me/faq</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://randomchats.me/pricing</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://randomchats.me/safety</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://randomchats.me/privacy</loc><changefreq>yearly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://randomchats.me/terms</loc><changefreq>yearly</changefreq><priority>0.4</priority></url>
 </urlset>

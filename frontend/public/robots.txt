@@ -1,4 +1,8 @@
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /chat
+Disallow: /profile
+Disallow: /rooms/
 
 Sitemap: https://randomchats.me/sitemap.xml
