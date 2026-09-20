@@ -16,8 +16,8 @@ export default function ReportModal({ open, onClose, onSubmit }) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="w-full max-w-md bg-panel rounded-xl border border-white/10 p-6 surface-lift animate-enter" role="dialog" aria-modal="true" aria-labelledby="report-title">
+    <div className="modal-viewport z-50 bg-black/60 backdrop-blur-sm">
+      <div className="modal-panel bg-panel rounded-xl border border-white/10 p-5 sm:p-6 surface-lift animate-enter" role="dialog" aria-modal="true" aria-labelledby="report-title">
           <h3 id="report-title" className="font-display text-lg font-semibold text-white mb-1">Report this person</h3>
         <p className="text-sm text-mist mb-4">
           This ends the session immediately. Reports involving minors are prioritized and, where

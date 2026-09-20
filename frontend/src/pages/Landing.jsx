@@ -133,7 +133,7 @@ export default function Landing() {
       </header>
 
       <main className="landing-main relative z-10 flex-1 flex flex-col items-center justify-center px-5 py-6 lg:py-8 text-center">
-        <div className="w-full max-w-5xl grid lg:grid-cols-[1fr_390px] gap-8 lg:gap-16 items-center">
+        <div className="landing-layout w-full max-w-5xl grid lg:grid-cols-[1fr_390px] gap-8 lg:gap-16 items-center">
           <section className="text-center lg:text-left lg:pl-6">
             <p
               className="font-mono text-[11px] sm:text-xs tracking-[0.22em] text-signal2 uppercase mb-4 animate-fadeInUp"
@@ -409,8 +409,8 @@ function StaffAccessModal({ onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-5 backdrop-blur-sm">
-      <form onSubmit={signIn} className="w-full max-w-sm rounded-2xl border border-white/10 bg-panel p-6 shadow-2xl">
+    <div className="modal-viewport z-50 bg-black/70 backdrop-blur-sm">
+      <form onSubmit={signIn} className="modal-panel max-w-sm rounded-xl border border-white/10 bg-panel p-5 shadow-2xl sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-signal">Private access</p>

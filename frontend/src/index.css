@@ -124,6 +124,8 @@ body {
   .public-card-grid, .site-footer-grid { grid-template-columns: 1fr; }
   .site-footer-bottom { align-items: flex-start; flex-direction: column; gap: 0.5rem; }
   .landing-main { justify-content: flex-start; padding-top: 1.25rem; }
+  .landing-layout { display: flex; flex-direction: column; }
+  .landing-form-wrap { order: -1; }
   .landing-form-wrap { max-width: 30rem; }
   .landing-form-card { max-height: calc(100dvh - 6.5rem); }
 }
@@ -444,6 +446,22 @@ textarea {
 .landing-chevron.is-open { transform: rotate(225deg) translate(-1px, -2px); }
 .landing-details { display: none; overflow: hidden; }
 .landing-details.is-open { animation: landingDetailsIn 260ms ease both; display: block; }
+
+.modal-viewport { align-items: center; display: flex; inset: 0; justify-content: center; overflow-y: auto; padding: 1rem; position: fixed; }
+.modal-panel { margin: auto; max-height: calc(100dvh - 2rem); overflow-y: auto; overscroll-behavior: contain; width: min(100%, 32rem); }
+.fixed.inset-0.z-50 { max-height: 100dvh; overflow-y: auto; padding-block: 1rem; }
+.fixed.inset-0.z-50 > form,
+.fixed.inset-0.z-50 > div { max-height: calc(100dvh - 2rem); overflow-y: auto; }
+.voice-wave { overflow: hidden; }
+.voice-wave span { flex: 0 0 auto; max-height: 100%; }
+
+@media (max-width: 640px) {
+  .modal-viewport { align-items: flex-start; padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem max(0.75rem, env(safe-area-inset-bottom)); }
+  .modal-panel { max-height: calc(100dvh - 1.5rem); }
+  .fixed.inset-0.z-50 { align-items: flex-start; padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem max(0.75rem, env(safe-area-inset-bottom)); }
+  .fixed.inset-0.z-50 > form,
+  .fixed.inset-0.z-50 > div { max-height: calc(100dvh - 1.5rem); }
+}
 
 @keyframes landingFieldIn {
   from { opacity: 0; transform: translateY(7px); }
