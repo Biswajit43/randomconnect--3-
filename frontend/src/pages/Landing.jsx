@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import PulseConnector from "../components/PulseConnector.jsx";
 import { getDisplayName, setDisplayName, getFingerprint } from "../lib/socket.js";
 import { api } from "../lib/api.js";
@@ -133,7 +132,7 @@ export default function Landing() {
         </div>
       </header>
 
-      <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-5 py-6 lg:py-8 text-center">
+      <main className="landing-main relative z-10 flex-1 flex flex-col items-center justify-center px-5 py-6 lg:py-8 text-center">
         <div className="w-full max-w-5xl grid lg:grid-cols-[1fr_390px] gap-8 lg:gap-16 items-center">
           <section className="text-center lg:text-left lg:pl-6">
             <p
@@ -201,7 +200,7 @@ export default function Landing() {
             </div>
           </section>
 
-          <section className="relative w-full max-w-sm mx-auto animate-slideUp" style={{ animationDelay: "250ms" }}>
+          <section className="landing-form-wrap relative w-full max-w-sm mx-auto animate-slideUp" style={{ animationDelay: "250ms" }}>
             <div
               className="absolute -inset-[1.5px] rounded-t-[28px] lg:rounded-2xl opacity-70 animate-spinSlow"
               style={{
@@ -210,7 +209,7 @@ export default function Landing() {
               aria-hidden="true"
             />
 
-            <div className="relative text-left bg-panel/95 border border-white/10 rounded-t-[28px] lg:rounded-2xl p-5 sm:p-6 shadow-2xl shadow-black/40 backdrop-blur-sm">
+            <div className="landing-form-card relative text-left bg-panel/95 border border-white/10 rounded-t-[28px] lg:rounded-2xl p-5 sm:p-6 shadow-2xl shadow-black/40 backdrop-blur-sm">
               <div className="lg:hidden w-10 h-1 rounded-full bg-white/15 mx-auto mb-4" />
 
               <div className="mb-4">
@@ -243,22 +242,25 @@ export default function Landing() {
                 )}
               </div>
 
+              <input
+                value={interests}
+                onChange={(e) => setInterests(e.target.value)}
+                placeholder="Interests (optional) — e.g. music, hiking, anime"
+                className="w-full bg-ink/60 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:border-signal/60 focus-visible:outline-signal transition mb-3"
+              />
+
               <button
+                type="button"
+                aria-expanded={detailsOpen}
+                aria-controls="landing-details"
                 onClick={() => setDetailsOpen((v) => !v)}
-                className="lg:hidden w-full flex items-center justify-between text-xs text-mist mb-3 py-1"
+                className="landing-details-toggle ui-button ui-button-quiet w-full justify-between px-3 text-xs text-mist mb-3"
               >
-                <span>{detailsOpen ? "Hide details" : "Interests, music, and privacy"}</span>
-                <span className={`transition-transform ${detailsOpen ? "rotate-180" : ""}`}>▾</span>
+                <span>{detailsOpen ? "Hide optional details" : "Premium, music, and privacy"}</span>
+                <span className={`landing-chevron ${detailsOpen ? "is-open" : ""}`} aria-hidden="true" />
               </button>
 
-              <div className={`${detailsOpen ? "block" : "hidden"} lg:block`}>
-                <input
-                  value={interests}
-                  onChange={(e) => setInterests(e.target.value)}
-                  placeholder="Interests (optional) — e.g. music, hiking, anime"
-                  className="w-full bg-ink/60 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:border-signal/60 focus-visible:outline-signal transition mb-3"
-                />
-
+              <div id="landing-details" className={`landing-details ${detailsOpen ? "is-open" : ""}`}>
                 <div className="mb-3 rounded-xl border border-violet/20 bg-violet/5 p-3">
                   <label className="block text-[11px] font-mono uppercase tracking-wide text-violet">✨ Redeem or recover Premium</label>
                   <input

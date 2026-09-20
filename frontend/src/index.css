@@ -123,6 +123,9 @@ body {
   .public-main { padding-top: 4rem; }
   .public-card-grid, .site-footer-grid { grid-template-columns: 1fr; }
   .site-footer-bottom { align-items: flex-start; flex-direction: column; gap: 0.5rem; }
+  .landing-main { justify-content: flex-start; padding-top: 1.25rem; }
+  .landing-form-wrap { max-width: 30rem; }
+  .landing-form-card { max-height: calc(100dvh - 6.5rem); }
 }
 
 body::before {
@@ -427,6 +430,30 @@ textarea {
 .ui-button-quiet:hover:not(:disabled) { color: #f4fffb; }
 .ui-button-violet { background: rgba(184, 164, 255, 0.16); border-color: rgba(184, 164, 255, 0.42); color: #d8ccff; }
 .ui-button-violet:hover:not(:disabled) { background: rgba(184, 164, 255, 0.24); }
+
+.landing-main { min-height: 0; }
+.landing-form-wrap { align-self: center; }
+.landing-form-card { max-height: min(760px, calc(100vh - 7.5rem)); overflow-y: auto; overscroll-behavior: contain; scrollbar-color: rgba(130, 230, 194, 0.45) transparent; scrollbar-width: thin; }
+.landing-form-card > * { animation: landingFieldIn 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.landing-form-card > *:nth-child(2) { animation-delay: 45ms; }
+.landing-form-card > *:nth-child(3) { animation-delay: 90ms; }
+.landing-form-card > *:nth-child(4) { animation-delay: 135ms; }
+.landing-form-card > *:nth-child(5) { animation-delay: 180ms; }
+.landing-details-toggle { display: flex; }
+.landing-chevron { border-bottom: 2px solid currentColor; border-right: 2px solid currentColor; height: 0.55rem; margin-right: 0.2rem; transform: rotate(45deg) translateY(-2px); transition: transform 180ms ease; width: 0.55rem; }
+.landing-chevron.is-open { transform: rotate(225deg) translate(-1px, -2px); }
+.landing-details { display: none; overflow: hidden; }
+.landing-details.is-open { animation: landingDetailsIn 260ms ease both; display: block; }
+
+@keyframes landingFieldIn {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes landingDetailsIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 
 /* =========================================================
