@@ -429,8 +429,8 @@ export default function GroupRoom() {
   const hasLiveAudio = Boolean(localStream?.getAudioTracks?.().some((track) => track.readyState === "live"));
   const gridCols = totalTiles <= 2 ? "grid-cols-1 sm:grid-cols-2" : totalTiles <= 4 ? "grid-cols-2" : "grid-cols-2 md:grid-cols-3";
   return (
-    <div className="min-h-screen flex flex-col px-3 sm:px-4 md:px-8 py-3 sm:py-4">
-      <header className="flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-white/5">
+    <div className="room-shell min-h-screen flex flex-col px-3 sm:px-4 md:px-8 py-3 sm:py-4">
+      <header className="room-header flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-white/5">
         <button onClick={leave} className="ui-button ui-button-muted shrink-0 px-3 text-sm">← Rooms</button>
         <div className="text-center flex-1 min-w-0 order-3 sm:order-none basis-full sm:basis-auto">
           <h1 className="font-display font-semibold text-white flex items-center gap-2 justify-center truncate">
@@ -443,6 +443,7 @@ export default function GroupRoom() {
           {!hasLiveAudio && <span className="hidden sm:inline text-xs font-mono text-amber-300">mic not connected</span>}
           {hasConnectionIssue && <span className="hidden sm:inline text-xs font-mono text-amber-300">audio reconnecting</span>}
           <span className={`flex items-center gap-2 text-xs font-mono ${socketReady ? "text-signal2" : "text-coral"}`}><span className={`w-2 h-2 rounded-full ${socketReady ? "bg-signal animate-pulse" : "bg-coral"}`} />{socketReady ? "live" : "reconnecting"}</span>
+          <a href="#room-controls" className="room-controls-jump ui-button ui-button-quiet min-h-9 px-2.5 text-xs">Controls</a>
         </div>
       </header>
       {banner && <div className={`mb-3 mx-auto max-w-[92%] px-4 py-2 rounded-xl text-sm font-mono text-center animate-enter ${banner.startsWith("◈") ? "role-entrance-developer" : "role-entrance-admin"}`}>{banner}</div>}
@@ -464,7 +465,7 @@ export default function GroupRoom() {
             </div>
 
             {visiblePeers.map((peer) => (
-              <div key={peer.socketId} className="relative z-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[60]">
+              <div key={peer.socketId} className="relative z-0 min-w-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[90]">
                 {/* 
                   FIX: We explicitly mute the VideoTile for remote peers.
                   This allows our custom RemoteAudioPlayer below to take full control 
@@ -482,7 +483,7 @@ export default function GroupRoom() {
               </div>
             ))}
           </div>
-          <div className="sticky bottom-0 z-50 pointer-events-auto flex flex-wrap items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
+          <div id="room-controls" className="sticky bottom-0 z-50 pointer-events-auto flex flex-wrap items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
             <IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton>
             <IconButton onClick={toggleCam} disabled={screenSharing} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton>
             <IconButton onClick={flipCamera} disabled={!camOn || screenSharing} active={false} label="Switch front and rear camera">↔</IconButton>

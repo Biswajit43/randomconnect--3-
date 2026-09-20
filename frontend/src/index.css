@@ -510,6 +510,11 @@ textarea {
 .landing-details.is-open { animation: landingDetailsIn 260ms ease both; display: block; }
 .group-room-grid { min-width: 0; }
 .group-room-grid > * { min-width: 0; }
+.group-room-grid video { border-radius: 22px; }
+.room-shell { max-width: 100vw; overflow-x: hidden; }
+.room-header { min-width: 0; max-width: 100%; }
+.room-header > * { min-width: 0; max-width: 100%; }
+.room-header .room-controls-jump { display: inline-flex; }
 
 .modal-viewport { align-items: center; display: flex; inset: 0; justify-content: center; overflow-y: auto; padding: 1rem; position: fixed; }
 .modal-panel { margin: auto; max-height: calc(100dvh - 2rem); overflow-y: auto; overscroll-behavior: contain; width: min(100%, 32rem); }
@@ -525,8 +530,9 @@ textarea {
   .fixed.inset-0.z-50 { align-items: flex-start; padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem max(0.75rem, env(safe-area-inset-bottom)); }
   .fixed.inset-0.z-50 > form,
   .fixed.inset-0.z-50 > div { max-height: calc(100dvh - 1.5rem); }
-  .group-room-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .group-room-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)) !important; }
   .group-room-grid > * { width: 100%; }
+  .room-header .room-controls-jump { order: 2; }
 }
 
 @keyframes landingFieldIn {
