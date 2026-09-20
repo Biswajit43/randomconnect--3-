@@ -293,12 +293,14 @@ export default function VideoTile({
 
   const roleLabel =
     role === "developer"
-      ? "DEVELOPER"
+      ? "DEVELOPER · PLATFORM"
       : role === "premium"
-        ? "PREMIUM"
+        ? "PREMIUM · MUSIC MOD"
         : role === "admin"
-          ? "ADMIN"
+          ? "ADMIN · TRUST & SAFETY"
           : "";
+
+  const roleTier = role === "developer" ? "role-tier-developer" : role === "admin" ? "role-tier-admin" : role === "premium" ? "role-tier-premium" : "role-tier-user";
 
   /*
    * ============================================================
@@ -320,6 +322,7 @@ export default function VideoTile({
         bg-[#080b16]
 
         border
+        ${roleTier}
         transition-all
         duration-300
 
@@ -595,6 +598,7 @@ export default function VideoTile({
               font-bold
               tracking-[0.12em]
               backdrop-blur-xl
+              role-tier-badge
 
               sm:px-3
               sm:text-[9px]

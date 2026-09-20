@@ -455,7 +455,7 @@ export default function GroupRoom() {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 sm:gap-5 min-h-0">
         <div className="flex flex-col gap-3 sm:gap-4 min-h-0">
           <MusicPlayerBoundary music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />
-          <div className={`relative z-0 grid ${gridCols} gap-2 sm:gap-3 flex-1 content-start animate-enter`}>
+          <div className={`group-room-grid relative z-0 grid ${gridCols} gap-2 sm:gap-3 flex-1 content-start animate-enter`}>
 
             <div className="relative">
               {/* Local Stream - We keep this one muted naturally so you don't hear yourself */}
