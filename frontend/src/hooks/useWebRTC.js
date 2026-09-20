@@ -81,10 +81,25 @@ export function useWebRTC({ localStream }) {
     setConnectionState("idle");
   }, []);
 
-  const addVideoTrack = useCallback(async (track, stream) => {
+  const addTrack = useCallback(async (track, stream) => {
     const pc = pcRef.current;
     if (!pc || !roomIdRef.current) return;
     pc.addTrack(track, stream);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit("webrtc:offer", { roomId: roomIdRef.current, sdp: offer });
+  }, []);
+
+  const addVideoTrack = useCallback(async (track, stream) => {
+    await addTrack(track, stream);
+  }, [addTrack]);
+
+  const removeTrack = useCallback(async (track) => {
+    const pc = pcRef.current;
+    if (!pc || !roomIdRef.current) return;
+    const sender = pc.getSenders().find((item) => item.track === track);
+    if (!sender) return;
+    pc.removeTrack(sender);
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     socket.emit("webrtc:offer", { roomId: roomIdRef.current, sdp: offer });
@@ -128,5 +143,5 @@ export function useWebRTC({ localStream }) {
     };
   }, []);
 
-  return { remoteStream, connectionState, startCall, endCall, addVideoTrack, replaceVideoTrack };
+  return { remoteStream, connectionState, startCall, endCall, addVideoTrack, addTrack, removeTrack, replaceVideoTrack };
 }

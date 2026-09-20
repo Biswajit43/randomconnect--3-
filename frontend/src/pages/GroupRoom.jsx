@@ -39,6 +39,7 @@ export default function GroupRoom() {
   const [localStream, setLocalStream] = useState(null);
   const [micOn, setMicOn] = useState(false);
   const [camOn, setCamOn] = useState(false);
+  const [screenSharing, setScreenSharing] = useState(false);
   const [cameraFacing, setCameraFacing] = useState("user");
   const [peers, setPeers] = useState([]);
   const [phase, setPhase] = useState("connecting-media");
@@ -62,9 +63,12 @@ export default function GroupRoom() {
   const displayName = useRef(getDisplayName() || `Guest-${getFingerprint().slice(0, 4)}`);
   const [role, setRole] = useState(() => localStorage.getItem("rc_staff_role") || "user");
   const localStreamRef = useRef(null);
+  const screenStreamRef = useRef(null);
+  const cameraTrackRef = useRef(null);
+  const screenShareHandlerRef = useRef(null);
   const mediaRequested = useRef(false);
   const identifySent = useRef(false);
-  const { remoteStreams, connectionStates, connectToExistingPeer, setRoomId, closeAll, addVideoTrackToAllPeers, replaceVideoTrackForAllPeers } = useGroupWebRTC({ localStream });
+  const { remoteStreams, connectionStates, connectToExistingPeer, setRoomId, closeAll, addVideoTrackToAllPeers, addTrackToAllPeers, removeTrackFromAllPeers, replaceVideoTrackForAllPeers } = useGroupWebRTC({ localStream });
 
   useEffect(() => {
     if (!getDisplayName()) navigate("/", { state: { returnTo: `/rooms/${roomId}` } });
@@ -100,6 +104,7 @@ export default function GroupRoom() {
     }).catch(() => { });
 
     return () => {
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       closeAll();
       socket.emit("group:leave", { roomId });
@@ -245,6 +250,7 @@ export default function GroupRoom() {
     setMicOn((current) => !current);
   }
   async function toggleCam() {
+    if (screenSharing) return;
     const tracks = localStream?.getVideoTracks() || [];
     if (!tracks.length) {
       try {
@@ -258,7 +264,7 @@ export default function GroupRoom() {
     const next = !camOn; tracks.forEach((track) => { track.enabled = next; }); setCamOn(next);
   }
   async function flipCamera() {
-    if (!camOn || !localStream) return;
+    if (screenSharing || !camOn || !localStream) return;
     const nextFacing = cameraFacing === "user" ? "environment" : "user";
     let videoStream;
     try {
@@ -275,6 +281,61 @@ export default function GroupRoom() {
     await replaceVideoTrackForAllPeers(nextTrack);
     setCameraFacing(nextFacing);
   }
+  async function toggleScreenShare() {
+    if (screenSharing) {
+      const screenStream = screenStreamRef.current;
+      const screenVideo = screenStream?.getVideoTracks?.()[0];
+      const screenAudio = screenStream?.getAudioTracks?.() || [];
+      for (const track of screenAudio) {
+        localStream?.removeTrack(track);
+        await removeTrackFromAllPeers(track);
+        track.stop();
+      }
+      if (screenVideo) {
+        localStream?.removeTrack(screenVideo);
+        const cameraTrack = cameraTrackRef.current;
+        if (cameraTrack?.readyState === "live") {
+          localStream.addTrack(cameraTrack);
+          await replaceVideoTrackForAllPeers(cameraTrack);
+        } else {
+          await removeTrackFromAllPeers(screenVideo);
+          screenVideo.stop();
+        }
+      }
+      screenStreamRef.current = null;
+      cameraTrackRef.current = null;
+      setScreenSharing(false);
+      return;
+    }
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setBanner("Screen sharing is not supported by this browser or device.");
+      return;
+    }
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "motion" }, audio: true });
+      const screenVideo = screenStream.getVideoTracks()[0];
+      if (!screenVideo || !localStream) return;
+      const cameraTrack = localStream.getVideoTracks()[0] || null;
+      cameraTrackRef.current = cameraTrack;
+      if (cameraTrack) {
+        localStream.removeTrack(cameraTrack);
+        await replaceVideoTrackForAllPeers(screenVideo);
+      } else {
+        localStream.addTrack(screenVideo);
+        if (phase === "joined") await addVideoTrackToAllPeers(screenVideo, localStream);
+      }
+      for (const audioTrack of screenStream.getAudioTracks()) {
+        localStream.addTrack(audioTrack);
+        if (phase === "joined") await addTrackToAllPeers(audioTrack, localStream);
+      }
+      screenStreamRef.current = screenStream;
+      screenVideo.onended = () => { screenShareHandlerRef.current?.(); };
+      setScreenSharing(true);
+    } catch {
+      setBanner("Screen sharing was cancelled or unavailable.");
+    }
+  }
+  screenShareHandlerRef.current = toggleScreenShare;
   function leave() { navigate("/rooms"); }
   function sendMessage() {
     const text = draft.trim();
@@ -423,8 +484,9 @@ export default function GroupRoom() {
           </div>
           <div className="sticky bottom-0 z-50 pointer-events-auto flex flex-wrap items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
             <IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton>
-            <IconButton onClick={toggleCam} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton>
-            <IconButton onClick={flipCamera} disabled={!camOn} active={false} label="Switch front and rear camera">↔</IconButton>
+            <IconButton onClick={toggleCam} disabled={screenSharing} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton>
+            <IconButton onClick={flipCamera} disabled={!camOn || screenSharing} active={false} label="Switch front and rear camera">↔</IconButton>
+            <IconButton onClick={toggleScreenShare} active={screenSharing} label={screenSharing ? "Stop sharing screen" : "Share screen"}>{screenSharing ? "⏹" : "🖥️"}</IconButton>
             <button onClick={leave} className="ui-button ui-button-danger shrink-0 bg-coral px-5 text-sm text-ink shadow-lg shadow-coral/10 sm:px-6">Leave room</button>
           </div>
         </div>

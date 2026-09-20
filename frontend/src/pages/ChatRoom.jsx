@@ -32,6 +32,7 @@ export default function ChatRoom() {
   const [localStream, setLocalStream] = useState(null);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(false);
+  const [screenSharing, setScreenSharing] = useState(false);
   const [phase, setPhase] = useState("connecting-media"); // connecting-media | queued | matched | blocked
   const [queuePosition, setQueuePosition] = useState(null);
   const [partnerName, setPartnerName] = useState("Stranger");
@@ -43,8 +44,11 @@ export default function ChatRoom() {
   const [reportOpen, setReportOpen] = useState(false);
   const [role, setRole] = useState(() => localStorage.getItem("rc_staff_role") || "user");
 
-  const { remoteStream, connectionState, startCall, endCall, addVideoTrack, replaceVideoTrack } = useWebRTC({ localStream });
+  const { remoteStream, connectionState, startCall, endCall, addVideoTrack, addTrack, removeTrack, replaceVideoTrack } = useWebRTC({ localStream });
   const mediaRequested = useRef(false);
+  const screenStreamRef = useRef(null);
+  const cameraTrackRef = useRef(null);
+  const screenShareHandlerRef = useRef(null);
   const localStreamRef = useRef(null); // mirrors localStream for use in cleanup, which otherwise closes over a stale null
 
   // Someone can land here directly (bookmark, back button) without going
@@ -73,6 +77,7 @@ export default function ChatRoom() {
       });
 
     return () => {
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
       // Read from the ref, not the `localStream` state variable — this
       // effect only runs once (empty deps), so its closure over `localStream`
       // is permanently the initial `null`, and the tracks would never
@@ -175,6 +180,57 @@ export default function ChatRoom() {
     await replaceVideoTrack(nextTrack);
     setCameraFacing(nextFacing);
   }
+  async function toggleScreenShare() {
+    if (screenSharing) {
+      const screenStream = screenStreamRef.current;
+      const screenVideo = screenStream?.getVideoTracks?.()[0];
+      const screenAudio = screenStream?.getAudioTracks?.() || [];
+      screenAudio.forEach((track) => { localStream?.removeTrack(track); removeTrack(track); track.stop(); });
+      if (screenVideo) {
+        localStream?.removeTrack(screenVideo);
+        const cameraTrack = cameraTrackRef.current;
+        if (cameraTrack?.readyState === "live") {
+          localStream.addTrack(cameraTrack);
+          await replaceVideoTrack(cameraTrack);
+        } else {
+          await removeTrack(screenVideo);
+          screenVideo.stop();
+        }
+      }
+      screenStreamRef.current = null;
+      cameraTrackRef.current = null;
+      setScreenSharing(false);
+      return;
+    }
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      alert("Screen sharing is not supported by this browser or device.");
+      return;
+    }
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "motion" }, audio: true });
+      const screenVideo = screenStream.getVideoTracks()[0];
+      if (!screenVideo || !localStream) return;
+      const cameraTrack = localStream.getVideoTracks()[0] || null;
+      cameraTrackRef.current = cameraTrack;
+      if (cameraTrack) {
+        localStream.removeTrack(cameraTrack);
+        await replaceVideoTrack(screenVideo);
+      } else {
+        localStream.addTrack(screenVideo);
+        if (phase === "matched") await addVideoTrack(screenVideo, localStream);
+      }
+      for (const audioTrack of screenStream.getAudioTracks()) {
+        localStream.addTrack(audioTrack);
+        if (phase === "matched") await addTrack(audioTrack, localStream);
+      }
+      screenStreamRef.current = screenStream;
+      screenVideo.onended = () => { screenShareHandlerRef.current?.(); };
+      setScreenSharing(true);
+    } catch {
+      // The user cancelled the browser picker or the device denied capture.
+    }
+  }
+  screenShareHandlerRef.current = toggleScreenShare;
   function skip() {
     endCall();
     socket.emit("session:skip");
@@ -257,6 +313,8 @@ export default function ChatRoom() {
             onToggleMic={toggleMic}
             onToggleCam={toggleCam}
             onFlipCamera={flipCamera}
+            screenSharing={screenSharing}
+            onToggleScreenShare={toggleScreenShare}
             onSkip={skip}
             onStop={stop}
             onReport={!['admin', 'developer'].includes(partnerRole) ? () => setReportOpen(true) : null}

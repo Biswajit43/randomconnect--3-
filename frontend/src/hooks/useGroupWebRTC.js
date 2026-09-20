@@ -164,9 +164,24 @@ export function useGroupWebRTC({ localStream }) {
     negotiatingRef.current.clear();
   }, []);
 
-  const addVideoTrackToAllPeers = useCallback(async (track, stream) => {
+  const addTrackToAllPeers = useCallback(async (track, stream) => {
     for (const [peerId, pc] of peersRef.current.entries()) {
       pc.addTrack(track, stream);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.emit("group:webrtc-offer", { roomId: roomIdRef.current, targetId: peerId, sdp: offer });
+    }
+  }, []);
+
+  const addVideoTrackToAllPeers = useCallback(async (track, stream) => {
+    await addTrackToAllPeers(track, stream);
+  }, [addTrackToAllPeers]);
+
+  const removeTrackFromAllPeers = useCallback(async (track) => {
+    for (const [peerId, pc] of peersRef.current.entries()) {
+      const sender = pc.getSenders().find((item) => item.track === track);
+      if (!sender) continue;
+      pc.removeTrack(sender);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       socket.emit("group:webrtc-offer", { roomId: roomIdRef.current, targetId: peerId, sdp: offer });
@@ -278,5 +293,5 @@ export function useGroupWebRTC({ localStream }) {
     };
   }, [createPeer, removePeer]);
 
-  return { remoteStreams, connectionStates, connectToExistingPeer, removePeer, setRoomId, closeAll, addVideoTrackToAllPeers, replaceVideoTrackForAllPeers };
+  return { remoteStreams, connectionStates, connectToExistingPeer, removePeer, setRoomId, closeAll, addVideoTrackToAllPeers, addTrackToAllPeers, removeTrackFromAllPeers, replaceVideoTrackForAllPeers };
 }

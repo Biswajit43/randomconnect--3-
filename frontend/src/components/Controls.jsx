@@ -4,6 +4,8 @@ export default function Controls({
   onToggleMic,
   onToggleCam,
   onFlipCamera,
+  screenSharing = false,
+  onToggleScreenShare,
   onSkip,
   onStop,
   onReport,
@@ -13,10 +15,11 @@ export default function Controls({
       <IconButton active={micOn} onClick={onToggleMic} label={micOn ? "Mute mic" : "Unmute mic"}>
         {micOn ? "🎙️" : "🔇"}
       </IconButton>
-      <IconButton active={camOn} onClick={onToggleCam} label={camOn ? "Turn camera off" : "Turn camera on"}>
+      <IconButton active={camOn} onClick={onToggleCam} disabled={screenSharing} label={camOn ? "Turn camera off" : "Turn camera on"}>
         {camOn ? "📹" : "🚫"}
       </IconButton>
-      {onFlipCamera && <IconButton active={false} onClick={onFlipCamera} disabled={!camOn} label="Switch front and rear camera">↔</IconButton>}
+      {onFlipCamera && <IconButton active={false} onClick={onFlipCamera} disabled={!camOn || screenSharing} label="Switch front and rear camera">↔</IconButton>}
+      {onToggleScreenShare && <IconButton active={screenSharing} onClick={onToggleScreenShare} label={screenSharing ? "Stop sharing screen" : "Share screen"}>{screenSharing ? "⏹" : "🖥️"}</IconButton>}
 
       <button
         onClick={onSkip}
