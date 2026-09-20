@@ -15,13 +15,14 @@ export default function VideoTile({
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
 
   /*
-   * ------------------------------------------------------------
+   * ============================================================
    * VIDEO PLAYBACK
-   * ------------------------------------------------------------
+   * ============================================================
    */
 
   useEffect(() => {
     const video = videoRef.current;
+
     if (!video) return;
 
     video.srcObject = stream || null;
@@ -36,7 +37,6 @@ export default function VideoTile({
         await video.play();
         setPlaybackBlocked(false);
       } catch {
-        // Browser autoplay policy may require user interaction.
         if (!muted) {
           setPlaybackBlocked(true);
         }
@@ -70,9 +70,9 @@ export default function VideoTile({
   }, [stream, muted]);
 
   /*
-   * ------------------------------------------------------------
+   * ============================================================
    * SPEAKING DETECTION
-   * ------------------------------------------------------------
+   * ============================================================
    */
 
   useEffect(() => {
@@ -212,9 +212,9 @@ export default function VideoTile({
   }, [stream]);
 
   /*
-   * ------------------------------------------------------------
+   * ============================================================
    * VIDEO STATE
-   * ------------------------------------------------------------
+   * ============================================================
    */
 
   const hasLiveVideo = Boolean(
@@ -224,6 +224,12 @@ export default function VideoTile({
         track.enabled
     )
   );
+
+  /*
+   * ============================================================
+   * AUDIO VISUALIZER
+   * ============================================================
+   */
 
   const waveHeights = [
     0.28,
@@ -239,16 +245,15 @@ export default function VideoTile({
   ];
 
   /*
-   * ------------------------------------------------------------
+   * ============================================================
    * ROLE COLORS
-   * ------------------------------------------------------------
+   * ============================================================
    */
 
   const roleConfig = {
     developer: {
-      label: "DEVELOPER",
       badge:
-        "border-cyan-300/30 bg-cyan-400/15 text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.2)]",
+        "border-cyan-300/30 bg-cyan-400/15 text-cyan-100",
       glow:
         "from-cyan-400/30 via-blue-500/10 to-transparent",
       avatar:
@@ -256,9 +261,8 @@ export default function VideoTile({
     },
 
     admin: {
-      label: "ADMIN",
       badge:
-        "border-rose-300/30 bg-rose-400/15 text-rose-200 shadow-[0_0_18px_rgba(244,63,94,0.2)]",
+        "border-rose-300/30 bg-rose-400/15 text-rose-100",
       glow:
         "from-rose-400/30 via-pink-500/10 to-transparent",
       avatar:
@@ -266,9 +270,8 @@ export default function VideoTile({
     },
 
     premium: {
-      label: "PREMIUM",
       badge:
-        "border-amber-300/30 bg-amber-400/15 text-amber-100 shadow-[0_0_20px_rgba(251,191,36,0.25)]",
+        "border-amber-300/30 bg-amber-400/15 text-amber-100",
       glow:
         "from-amber-300/30 via-orange-500/10 to-transparent",
       avatar:
@@ -276,7 +279,6 @@ export default function VideoTile({
     },
 
     user: {
-      label: "",
       badge:
         "border-white/10 bg-white/10 text-white/80",
       glow:
@@ -289,35 +291,49 @@ export default function VideoTile({
   const currentRole =
     roleConfig[role] || roleConfig.user;
 
+  const roleLabel =
+    role === "developer"
+      ? "DEVELOPER"
+      : role === "premium"
+        ? "PREMIUM"
+        : role === "admin"
+          ? "ADMIN"
+          : "";
+
+  /*
+   * ============================================================
+   * RENDER
+   * ============================================================
+   */
+
   return (
     <div
       className={`
-        group relative
+        group
+        relative
         isolate
         h-full
+        min-h-[220px]
         w-full
         overflow-hidden
         rounded-[22px]
         bg-[#080b16]
-        aspect-[4/3]
-        sm:aspect-video
 
         border
         transition-all
         duration-300
-        ease-out
 
         ${
           isSpeaking
             ? `
               border-cyan-300/60
               shadow-[0_0_0_1px_rgba(103,232,249,0.35),
-              0_0_25px_rgba(34,211,238,0.25),
-              0_0_60px_rgba(139,92,246,0.18)]
+              0_0_28px_rgba(34,211,238,0.25),
+              0_0_65px_rgba(139,92,246,0.18)]
             `
             : `
               border-white/[0.08]
-              shadow-[0_15px_50px_rgba(0,0,0,0.35)]
+              shadow-[0_18px_55px_rgba(0,0,0,0.35)]
             `
         }
       `}
@@ -325,32 +341,33 @@ export default function VideoTile({
         "--voice-intensity": voiceIntensity,
       }}
     >
-      {/* -------------------------------------------------- */}
-      {/* AMBIENT COLOR GLOW */}
-      {/* -------------------------------------------------- */}
+      {/* ====================================================== */}
+      {/* AMBIENT GLOW */}
+      {/* ====================================================== */}
 
       <div
         className={`
           pointer-events-none
           absolute
-          -inset-20
+          -inset-24
           -z-10
           bg-gradient-to-br
           ${currentRole.glow}
           blur-3xl
           transition-all
           duration-500
+
           ${
             isSpeaking
-              ? "opacity-100 scale-110"
-              : "opacity-40 scale-100"
+              ? "scale-110 opacity-100"
+              : "scale-100 opacity-50"
           }
         `}
       />
 
-      {/* -------------------------------------------------- */}
+      {/* ====================================================== */}
       {/* VIDEO */}
-      {/* -------------------------------------------------- */}
+      {/* ====================================================== */}
 
       {stream && (
         <video
@@ -365,21 +382,25 @@ export default function VideoTile({
             w-full
             object-cover
             bg-black
-            transition-transform
-            duration-500
+
             ${
               hasLiveVideo
                 ? "opacity-100"
                 : "h-px w-px opacity-0"
             }
-            ${mirrored ? "-scale-x-100" : ""}
+
+            ${
+              mirrored
+                ? "-scale-x-100"
+                : ""
+            }
           `}
         />
       )}
 
-      {/* -------------------------------------------------- */}
-      {/* VIDEO COLOR TREATMENT */}
-      {/* -------------------------------------------------- */}
+      {/* ====================================================== */}
+      {/* VIDEO COLOR OVERLAY */}
+      {/* ====================================================== */}
 
       {hasLiveVideo && (
         <>
@@ -402,8 +423,8 @@ export default function VideoTile({
               absolute
               inset-0
               bg-gradient-to-t
-              from-black/80
-              via-black/5
+              from-black/90
+              via-black/10
               to-black/20
             "
           />
@@ -419,12 +440,13 @@ export default function VideoTile({
         </>
       )}
 
-      {/* -------------------------------------------------- */}
-      {/* CAMERA OFF */}
-      {/* -------------------------------------------------- */}
+      {/* ====================================================== */}
+      {/* CAMERA OFF AVATAR */}
+      {/* No "CAMERA OFF" text anymore */}
+      {/* ====================================================== */}
 
       {!hasLiveVideo && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden bg-[#090d19]">
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-[#090d19]">
           <div
             className={`
               absolute
@@ -435,34 +457,43 @@ export default function VideoTile({
             `}
           />
 
-          {/* Decorative blobs */}
-          <div className="absolute -left-12 -top-12 size-32 rounded-full bg-violet-500/20 blur-3xl" />
-          <div className="absolute -right-12 bottom-0 size-32 rounded-full bg-cyan-400/15 blur-3xl" />
+          <div className="absolute -left-16 -top-16 size-40 rounded-full bg-violet-500/20 blur-3xl" />
+
+          <div className="absolute -bottom-16 -right-16 size-40 rounded-full bg-cyan-400/15 blur-3xl" />
 
           <div
             className={`
               relative
               flex
-              size-[88px]
+              size-[76px]
               items-center
               justify-center
               rounded-full
               bg-gradient-to-br
               ${currentRole.avatar}
               p-[2px]
-              shadow-[0_0_40px_rgba(139,92,246,0.25)]
+
+              shadow-[0_0_45px_rgba(139,92,246,0.3)]
+
+              sm:size-[88px]
+              lg:size-[96px]
             `}
           >
-            <div className="flex size-full items-center justify-center rounded-full bg-[#0b0f1c]">
+            <div className="flex size-full items-center justify-center overflow-hidden rounded-full bg-[#0b0f1c]">
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
                   alt=""
-                  className="size-full rounded-full object-cover"
+                  className="size-full object-cover"
                 />
               ) : (
                 <svg
-                  className="size-9 text-white/40"
+                  className="
+                    size-8
+                    text-white/40
+                    sm:size-9
+                    lg:size-10
+                  "
                   viewBox="0 0 24 24"
                   fill="currentColor"
                 >
@@ -471,20 +502,50 @@ export default function VideoTile({
               )}
             </div>
           </div>
-
-          <span className="relative mt-4 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-white/45 backdrop-blur">
-            CAMERA OFF
-          </span>
         </div>
       )}
 
-      {/* -------------------------------------------------- */}
-      {/* TOP STATUS */}
-      {/* -------------------------------------------------- */}
+      {/* ====================================================== */}
+      {/* TOP BAR */}
+      {/* ====================================================== */}
 
-      <div className="absolute left-3 right-3 top-3 z-20 flex items-start justify-between">
-        {/* Live indicator */}
-        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-2.5 py-1.5 backdrop-blur-xl">
+      <div
+        className="
+          absolute
+          left-3
+          right-3
+          top-3
+          z-30
+
+          flex
+          items-start
+          justify-between
+          gap-2
+
+          sm:left-4
+          sm:right-4
+          sm:top-4
+        "
+      >
+        {/* LIVE */}
+
+        <div
+          className="
+            flex
+            items-center
+            gap-2
+            rounded-full
+            border
+            border-white/10
+            bg-black/45
+            px-2.5
+            py-1.5
+            backdrop-blur-xl
+
+            sm:px-3
+            sm:py-1.5
+          "
+        >
           <span className="relative flex size-2">
             <span
               className={`
@@ -516,36 +577,41 @@ export default function VideoTile({
             />
           </span>
 
-          <span className="text-[9px] font-bold tracking-[0.14em] text-white/70">
+          <span className="text-[9px] font-bold tracking-[0.14em] text-white/75 sm:text-[10px]">
             LIVE
           </span>
         </div>
 
-        {/* Role */}
-        {role !== "user" && (
+        {/* ROLE */}
+
+        {roleLabel && (
           <span
             className={`
               rounded-full
               border
               px-2.5
               py-1.5
-              text-[9px]
+              text-[8px]
               font-bold
               tracking-[0.12em]
               backdrop-blur-xl
+
+              sm:px-3
+              sm:text-[9px]
+
               ${currentRole.badge}
             `}
           >
             {role === "developer" && "✦ "}
             {role === "premium" && "◆ "}
-            {currentRole.label}
+            {roleLabel}
           </span>
         )}
       </div>
 
-      {/* -------------------------------------------------- */}
-      {/* SPEAKING RIPPLE */}
-      {/* -------------------------------------------------- */}
+      {/* ====================================================== */}
+      {/* SPEAKING EFFECT */}
+      {/* ====================================================== */}
 
       {isSpeaking && (
         <div className="pointer-events-none absolute inset-0 z-10">
@@ -564,22 +630,25 @@ export default function VideoTile({
               border-cyan-300/10
               bg-cyan-300/[0.03]
               blur-sm
+              transition-transform
+              duration-150
             "
             style={{
-              transform: `translate(-50%, -50%) scale(${
-                1 + voiceIntensity * 0.35
-              })`,
+              transform: `
+                translate(-50%, -50%)
+                scale(${1 + voiceIntensity * 0.35})
+              `,
             }}
           />
         </div>
       )}
 
-      {/* -------------------------------------------------- */}
-      {/* PLAYBACK BLOCKED */}
-      {/* -------------------------------------------------- */}
+      {/* ====================================================== */}
+      {/* PLAYBACK */}
+      {/* ====================================================== */}
 
       {playbackBlocked && stream && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/45 p-4 backdrop-blur-md">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-md">
           <button
             type="button"
             onClick={async () => {
@@ -587,30 +656,32 @@ export default function VideoTile({
                 await videoRef.current?.play();
                 setPlaybackBlocked(false);
               } catch {
-                // Keep button visible if playback remains blocked.
+                // Keep visible if browser still blocks playback.
               }
             }}
             className="
-              group/play
               flex
               items-center
               gap-3
               rounded-full
               border
               border-cyan-300/30
-              bg-[#0b1020]/90
-              px-5
-              py-3
+              bg-[#0b1020]/95
+              px-4
+              py-2.5
               text-xs
               font-semibold
               text-white
+
               shadow-[0_0_35px_rgba(34,211,238,0.2)]
-              backdrop-blur-xl
+
               transition
               hover:scale-105
               hover:border-cyan-300/60
-              hover:bg-[#10172c]
               active:scale-95
+
+              sm:px-5
+              sm:py-3
             "
           >
             <span
@@ -640,48 +711,155 @@ export default function VideoTile({
         </div>
       )}
 
-      {/* -------------------------------------------------- */}
-      {/* BOTTOM INFORMATION */}
-      {/* -------------------------------------------------- */}
+      {/* ====================================================== */}
+      {/* BOTTOM NAME + AUDIO */}
+      {/* ====================================================== */}
 
-      <div className="absolute inset-x-0 bottom-0 z-20 p-3">
-        <div className="flex items-end justify-between gap-3">
-          {/* Name */}
+      <div
+        className="
+          absolute
+          inset-x-0
+          bottom-0
+          z-30
+
+          p-2.5
+
+          sm:p-3
+          md:p-4
+          lg:p-4
+        "
+      >
+        <div
+          className="
+            flex
+            w-full
+            items-end
+            gap-2
+          "
+        >
+          {/* ================================================== */}
+          {/* NAME */}
+          {/* ================================================== */}
+
           {label && (
-            <div className="min-w-0">
-              <div className="flex max-w-[65%] items-center gap-2 rounded-xl border border-white/10 bg-black/45 px-3 py-2 backdrop-blur-xl">
+            <div
+              className="
+                min-w-0
+                flex-1
+              "
+            >
+              <div
+                className={`
+                  flex
+                  min-w-0
+                  w-fit
+                  max-w-full
+                  items-center
+                  gap-2.5
+
+                  rounded-xl
+                  border
+                  border-white/15
+
+                  bg-gradient-to-r
+                  from-black/80
+                  via-black/65
+                  to-black/35
+
+                  px-3
+                  py-2
+
+                  shadow-[0_8px_30px_rgba(0,0,0,0.35)]
+
+                  backdrop-blur-xl
+
+                  sm:px-3.5
+                  sm:py-2.5
+
+                  md:px-4
+                  md:py-2.5
+
+                  ${
+                    isSpeaking
+                      ? "border-cyan-300/35 shadow-[0_0_22px_rgba(34,211,238,0.12)]"
+                      : ""
+                  }
+                `}
+              >
+                {/* Speaking dot */}
+
                 <span
                   className={`
-                    size-1.5
+                    size-2
                     shrink-0
                     rounded-full
+
                     ${
                       isSpeaking
-                        ? "bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.9)]"
-                        : "bg-white/30"
+                        ? "bg-cyan-300 shadow-[0_0_12px_rgba(103,232,249,1)]"
+                        : "bg-white/35"
                     }
                   `}
                 />
 
+                {/* Name */}
+
                 <span
                   className={`
+                    min-w-0
                     truncate
-                    text-[11px]
-                    font-semibold
+
+                    text-sm
+                    font-bold
+                    leading-tight
+                    tracking-[-0.01em]
+
+                    sm:text-base
+                    md:text-base
+                    lg:text-lg
+
                     ${
                       isSpeaking
-                        ? "text-cyan-100"
-                        : "text-white/80"
+                        ? "text-white"
+                        : "text-white/95"
                     }
                   `}
+                  title={label}
                 >
                   {label}
                 </span>
+
+                {/* Speaking indicator */}
+
+                {isSpeaking && (
+                  <span
+                    className="
+                      shrink-0
+                      rounded-full
+                      bg-cyan-300/10
+                      px-1.5
+                      py-0.5
+
+                      text-[8px]
+                      font-bold
+                      uppercase
+                      tracking-[0.12em]
+                      text-cyan-200
+
+                      sm:text-[9px]
+                    "
+                  >
+                    speaking
+                  </span>
+                )}
               </div>
             </div>
           )}
 
-          {/* Audio Visualizer */}
+          {/* ================================================== */}
+          {/* AUDIO VISUALIZER */}
+          {/* ================================================== */}
+
           <div
             className={`
               flex
@@ -689,16 +867,31 @@ export default function VideoTile({
               shrink-0
               items-center
               gap-[3px]
+
               rounded-xl
               border
+
               px-2.5
+
               backdrop-blur-xl
+
               transition-all
               duration-300
+
+              sm:h-10
+              sm:px-3
+
               ${
                 isSpeaking
-                  ? "border-cyan-300/25 bg-cyan-300/[0.08] shadow-[0_0_20px_rgba(34,211,238,0.15)]"
-                  : "border-white/10 bg-black/50"
+                  ? `
+                    border-cyan-300/30
+                    bg-cyan-300/[0.09]
+                    shadow-[0_0_22px_rgba(34,211,238,0.18)]
+                  `
+                  : `
+                    border-white/10
+                    bg-black/55
+                  `
               }
             `}
             role="img"
@@ -714,9 +907,12 @@ export default function VideoTile({
                 className={`
                   w-[2px]
                   rounded-full
+
                   transition-all
                   duration-75
+
                   sm:w-[3px]
+
                   ${
                     isSpeaking
                       ? "bg-gradient-to-t from-violet-400 via-cyan-300 to-white"
@@ -727,12 +923,11 @@ export default function VideoTile({
                   height: isSpeaking
                     ? `${Math.max(
                         18,
-                        height * (25 + voiceIntensity * 75)
+                        height *
+                          (25 + voiceIntensity * 75)
                       )}%`
                     : "20%",
-                  animationDelay: isSpeaking
-                    ? `${index * -70}ms`
-                    : "0ms",
+
                   boxShadow: isSpeaking
                     ? "0 0 8px rgba(103,232,249,0.5)"
                     : "none",
@@ -743,9 +938,9 @@ export default function VideoTile({
         </div>
       </div>
 
-      {/* -------------------------------------------------- */}
-      {/* PREMIUM BORDER HIGHLIGHT */}
-      {/* -------------------------------------------------- */}
+      {/* ====================================================== */}
+      {/* PREMIUM BORDER */}
+      {/* ====================================================== */}
 
       <div
         className="
@@ -758,13 +953,14 @@ export default function VideoTile({
         "
       />
 
-      {/* Top shine */}
+      {/* TOP LIGHT */}
+
       <div
         className="
           pointer-events-none
           absolute
-          left-[10%]
-          right-[10%]
+          left-[8%]
+          right-[8%]
           top-0
           h-px
           bg-gradient-to-r
@@ -774,7 +970,8 @@ export default function VideoTile({
         "
       />
 
-      {/* Speaking bottom glow */}
+      {/* SPEAKING BOTTOM GLOW */}
+
       {isSpeaking && (
         <div
           className="
@@ -783,7 +980,7 @@ export default function VideoTile({
             bottom-0
             left-1/4
             right-1/4
-            h-12
+            h-14
             rounded-full
             bg-cyan-400/20
             blur-2xl
