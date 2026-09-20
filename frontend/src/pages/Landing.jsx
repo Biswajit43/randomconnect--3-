@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import PulseConnector from "../components/PulseConnector.jsx";
 import { getDisplayName, setDisplayName, getFingerprint } from "../lib/socket.js";
@@ -19,6 +19,18 @@ const AVATAR_COLORS = [
   "#6FCF97",
 ];
 
+/*
+  Height-gated visibility.
+  On phones the first screen must fit without scrolling, so extras only appear
+  when the viewport is tall enough (or on desktop, lg+). Written out in full so
+  Tailwind can see every class. Needs Tailwind 3.1+; on older versions the extras
+  simply stay hidden on phones, which is the safe failure.
+*/
+const ROOMY_BLOCK = "hidden [@media(min-height:720px)]:block lg:block";
+const ROOMY_FLEX = "hidden [@media(min-height:720px)]:flex lg:flex";
+const ROOMY_INLINE_FLEX = "hidden [@media(min-height:720px)]:inline-flex lg:inline-flex";
+const MID_INLINE_FLEX = "hidden [@media(min-height:620px)]:inline-flex lg:inline-flex";
+
 function colorForName(text) {
   let hash = 0;
 
@@ -34,6 +46,11 @@ function scrollToStart() {
     behavior: "smooth",
     block: "center",
   });
+
+  // Put the cursor in the name field once the scroll has settled.
+  window.setTimeout(() => {
+    document.getElementById("display-name")?.focus({ preventScroll: true });
+  }, 500);
 }
 
 export default function Landing() {
@@ -56,13 +73,26 @@ export default function Landing() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [staffAccessOpen, setStaffAccessOpen] = useState(false);
 
-  const trimmedName = name.trim();
+  const closeOptions = useCallback(() => setOptionsOpen(false), []);
+  const closeStaff = useCallback(() => setStaffAccessOpen(false), []);
 
-  const canEnter =
-    trimmedName.length > 0 &&
-    ageConfirmed &&
-    agreedRules &&
-    !premiumBusy;
+  const trimmedName = name.trim();
+  const confirmed = ageConfirmed && agreedRules;
+  const canEnter = trimmedName.length > 0 && confirmed && !premiumBusy;
+  const hasCode = premiumCode.trim().length > 0 || recoveryCode.trim().length > 0;
+  const premiumIsError =
+    premiumMessage.length > 0 &&
+    !premiumMessage.startsWith("Premium activated") &&
+    !premiumMessage.startsWith("Premium restored");
+
+  // The button says what is missing instead of just going grey.
+  const ctaLabel = premiumBusy
+    ? "Activating premium…"
+    : !trimmedName
+      ? "Enter a name to start"
+      : !confirmed
+        ? "Tick both boxes to start"
+        : "Start talking";
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -218,80 +248,82 @@ export default function Landing() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_25%,#050816_90%)]" />
       </div>
 
-      {/* Navigation */}
-      <header className="relative z-20 mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 sm:px-8 lg:px-10">
-        <Link
-          to="/"
-          className="group flex items-center gap-2"
-          aria-label="RandomConnect home"
-        >
-          <span className="relative flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10">
-            <span className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(76,201,240,.9)]" />
-          </span>
-
-          <span className="text-lg font-bold tracking-[-0.04em] text-white">
-            random
-            <span className="text-cyan-300">connect</span>
-          </span>
-        </Link>
-
-        <nav className="hidden items-center gap-7 text-sm text-slate-400 md:flex">
+      {/*
+        FIRST SCREEN
+        Exactly one viewport tall (dvh follows the mobile browser toolbar).
+        Header + hero + start card live here, so the name field, the checkboxes
+        and the button are all visible without scrolling.
+      */}
+      <div
+        className="relative z-10 flex min-h-screen flex-col"
+        style={{ minHeight: "100dvh" }}
+      >
+        {/* Navigation */}
+        <header className="relative z-20 mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3 sm:px-8 sm:py-5 lg:px-10">
           <Link
-            to="/about"
-            className="transition hover:text-white"
+            to="/"
+            className="group flex items-center gap-2"
+            aria-label="RandomConnect home"
           >
-            About
+            <span className="relative flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10">
+              <span className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(76,201,240,.9)]" />
+            </span>
+
+            <span className="text-lg font-bold tracking-[-0.04em] text-white">
+              random
+              <span className="text-cyan-300">connect</span>
+            </span>
           </Link>
 
-          <Link
-            to="/safety"
-            className="transition hover:text-white"
-          >
-            Safety
-          </Link>
+          <nav className="hidden items-center gap-7 text-sm text-slate-400 md:flex">
+            <Link to="/about" className="transition hover:text-white">
+              About
+            </Link>
 
-          <Link
-            to="/faq"
-            className="transition hover:text-white"
-          >
-            FAQ
-          </Link>
+            <Link to="/safety" className="transition hover:text-white">
+              Safety
+            </Link>
 
-          <Link
-            to="/pricing"
-            className="transition hover:text-white"
-          >
-            Pricing
-          </Link>
-        </nav>
+            <Link to="/faq" className="transition hover:text-white">
+              FAQ
+            </Link>
 
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 rounded-full border border-emerald-400/15 bg-emerald-400/5 px-3 py-1.5 text-xs text-emerald-300 sm:flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.8)]" />
-            Private by default
+            <Link to="/pricing" className="transition hover:text-white">
+              Pricing
+            </Link>
+          </nav>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="hidden items-center gap-2 rounded-full border border-emerald-400/15 bg-emerald-400/5 px-3 py-1.5 text-xs text-emerald-300 sm:flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.8)]" />
+              Private by default
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setStaffAccessOpen(true)}
+              className="min-h-[2.5rem] rounded-full px-3 text-xs text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
+            >
+              Staff
+            </button>
           </div>
+        </header>
 
-          <button
-            type="button"
-            onClick={() => setStaffAccessOpen(true)}
-            className="rounded-full px-3 py-2 text-xs text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
-          >
-            Staff
-          </button>
-        </div>
-      </header>
-
-      {/* Main */}
-      <main className="relative z-10 mx-auto w-full max-w-7xl px-5 pb-16 sm:px-8 lg:px-10">
-        <section className="grid min-h-[calc(100vh-88px)] items-center gap-14 py-10 lg:grid-cols-[1.05fr_.75fr] lg:gap-20 lg:py-16">
+        {/*
+          Phones / tablets: hero fills the leftover space, card sits at the bottom
+          within thumb reach. Desktop (lg): two columns.
+        */}
+        <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-8 lg:grid lg:grid-cols-[1.05fr_.75fr] lg:items-center lg:gap-20 lg:px-10 lg:pb-16 lg:pt-6">
           {/* Hero */}
-          <div className="max-w-3xl">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/[0.05] px-3.5 py-2 text-xs text-cyan-200">
+          <div className="flex flex-1 flex-col justify-center py-2 lg:block lg:max-w-3xl lg:py-0">
+            <div
+              className={`${ROOMY_INLINE_FLEX} mb-5 items-center gap-2 self-start rounded-full border border-cyan-300/15 bg-cyan-300/[0.05] px-3.5 py-2 text-xs text-cyan-200 lg:mb-6`}
+            >
               <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(76,201,240,.9)]" />
               Real conversations · no profile required
             </div>
 
-            <h1 className="max-w-3xl text-[3.2rem] font-bold leading-[.98] tracking-[-0.055em] text-white sm:text-6xl lg:text-[5.7rem]">
+            <h1 className="max-w-3xl text-[2.25rem] font-bold leading-[1] tracking-[-0.055em] text-white sm:text-6xl lg:text-[5.7rem] lg:leading-[.98]">
               Talk to
               <br />
 
@@ -302,19 +334,23 @@ export default function Landing() {
 
             <div
               key={taglineIndex}
-              className="mt-6 text-2xl font-medium tracking-[-0.025em] text-slate-300 sm:text-3xl animate-[landingFade_.55s_ease-out]"
+              className="mt-2 min-h-[1.5em] text-base font-medium tracking-[-0.01em] text-slate-300 animate-[landingFade_.55s_ease-out] sm:mt-4 sm:text-2xl lg:mt-6 lg:text-3xl"
             >
               {TAGLINES[taglineIndex]}
             </div>
 
-            <p className="mt-6 max-w-xl text-base leading-7 text-slate-400 sm:text-lg">
+            <p
+              className={`${ROOMY_BLOCK} mt-4 max-w-xl text-base leading-7 text-slate-400 lg:mt-6 lg:text-lg`}
+            >
               Drop into a respectful conversation, share an interest,
               and leave whenever you want. No profile to build and no
               personal details needed.
             </p>
 
             {/* Trust row */}
-            <div className="mt-8 flex flex-wrap gap-2.5">
+            <div
+              className={`${ROOMY_FLEX} mt-5 flex-wrap gap-2 lg:mt-8 lg:gap-2.5`}
+            >
               <TrustPill icon="✦" text="No signup" />
               <TrustPill icon="↗" text="Skip anytime" />
               <TrustPill icon="◌" text="Camera starts off" />
@@ -322,7 +358,9 @@ export default function Landing() {
 
             {/* Waiting status */}
             {waitingCount !== null && (
-              <div className="mt-7 inline-flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.025] px-4 py-2.5 text-sm text-slate-400">
+              <div
+                className={`${MID_INLINE_FLEX} mt-4 items-center gap-2.5 self-start rounded-full border border-white/10 bg-white/[0.025] px-3 py-1.5 text-xs text-slate-400 lg:mt-7 lg:px-4 lg:py-2.5 lg:text-sm`}
+              >
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-300 opacity-60" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
@@ -336,8 +374,8 @@ export default function Landing() {
               </div>
             )}
 
-            {/* Product preview */}
-            <div className="relative mt-12 hidden max-w-xl sm:block">
+            {/* Product preview (desktop only, keeps small screens to one view) */}
+            <div className="relative mt-12 hidden max-w-xl lg:block">
               <div className="absolute -inset-5 rounded-[2rem] bg-cyan-400/5 blur-3xl" />
 
               <div className="relative flex items-center gap-4 rounded-3xl border border-white/10 bg-white/[0.035] p-4 shadow-2xl shadow-black/30 backdrop-blur-xl">
@@ -361,12 +399,12 @@ export default function Landing() {
                   </p>
                 </div>
 
-                <div className="hidden rounded-xl border border-cyan-300/15 bg-cyan-300/5 px-4 py-2 text-xs font-medium text-cyan-200 sm:block">
+                <div className="rounded-xl border border-cyan-300/15 bg-cyan-300/5 px-4 py-2 text-xs font-medium text-cyan-200">
                   Connecting
                 </div>
               </div>
 
-              <div className="absolute -bottom-7 -right-3 hidden rounded-2xl border border-violet-300/15 bg-[#0b1022]/95 p-3 shadow-xl shadow-black/40 backdrop-blur-xl sm:block">
+              <div className="absolute -bottom-7 -right-3 rounded-2xl border border-violet-300/15 bg-[#0b1022]/95 p-3 shadow-xl shadow-black/40 backdrop-blur-xl">
                 <div className="flex items-center gap-3">
                   <div className="flex -space-x-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#0b1022] bg-cyan-300 text-xs font-bold text-[#031018]">
@@ -398,40 +436,45 @@ export default function Landing() {
           {/* Start card */}
           <section
             id="start-talking"
-            className="w-full lg:justify-self-end"
+            className="mx-auto w-full max-w-md lg:mx-0 lg:max-w-none lg:justify-self-end"
           >
             <div className="relative">
-              <div className="absolute -inset-6 rounded-[2rem] bg-cyan-400/5 blur-3xl" />
+              <div className="absolute -inset-4 rounded-[2rem] bg-cyan-400/5 blur-3xl lg:-inset-6" />
 
-              <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#0a1020]/90 shadow-2xl shadow-black/50 backdrop-blur-2xl">
-                <div className="border-b border-white/[0.07] px-6 py-6 sm:px-7">
-                  <div className="flex items-center justify-between">
+              <div className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0a1020]/90 shadow-2xl shadow-black/50 backdrop-blur-2xl lg:rounded-[2rem]">
+                {/* Card header: one slim line on phones, full header on desktop */}
+                <div className="px-4 pt-4 lg:border-b lg:border-white/[0.07] lg:px-7 lg:py-6">
+                  <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
+                      <p
+                        className={`${ROOMY_BLOCK} text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300`}
+                      >
                         Start here
                       </p>
 
-                      <h2 className="mt-2 text-2xl font-bold tracking-[-0.035em] text-white">
+                      <h2 className="text-xl font-bold tracking-[-0.035em] text-white lg:mt-2 lg:text-2xl">
                         Start talking
                       </h2>
 
-                      <p className="mt-1.5 text-sm text-slate-500">
+                      <p
+                        className={`${ROOMY_BLOCK} mt-1 text-sm text-slate-500 lg:mt-1.5`}
+                      >
                         Choose a name and you're ready.
                       </p>
                     </div>
 
-                    <div className="hidden h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] sm:flex">
+                    <div className="hidden h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] lg:flex">
                       <span className="text-lg">↗</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-5 p-6 sm:p-7">
+                <div className="space-y-3 px-4 pb-4 pt-3 lg:space-y-5 lg:p-7">
                   {/* Name */}
                   <div>
                     <label
                       htmlFor="display-name"
-                      className="mb-2 block text-sm font-medium text-slate-300"
+                      className="sr-only mb-0 block text-sm font-medium text-slate-300 lg:not-sr-only lg:mb-2"
                     >
                       Display name
                     </label>
@@ -439,7 +482,7 @@ export default function Landing() {
                     <div className="relative">
                       <span
                         aria-hidden="true"
-                        className="absolute left-3.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl text-sm font-bold text-[#06101a]"
+                        className="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-xl text-sm font-bold text-[#06101a] lg:left-3.5 lg:h-9 lg:w-9"
                         style={{
                           backgroundColor: trimmedName
                             ? colorForName(trimmedName)
@@ -464,7 +507,7 @@ export default function Landing() {
                         maxLength={30}
                         autoComplete="nickname"
                         enterKeyHint="go"
-                        className="h-14 w-full rounded-2xl border border-white/10 bg-black/20 pl-16 pr-4 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/50 focus:bg-cyan-300/[0.025] focus:ring-4 focus:ring-cyan-300/5"
+                        className="h-12 w-full rounded-2xl border border-white/10 bg-black/20 pl-12 pr-4 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/50 focus:bg-cyan-300/[0.025] focus:ring-4 focus:ring-cyan-300/5 lg:h-14 lg:pl-16"
                       />
                     </div>
                   </div>
@@ -473,7 +516,7 @@ export default function Landing() {
                   <div>
                     <label
                       htmlFor="interests"
-                      className="mb-2 block text-sm font-medium text-slate-300"
+                      className="sr-only mb-0 block text-sm font-medium text-slate-300 lg:not-sr-only lg:mb-2"
                     >
                       Interests
                       <span className="ml-1 font-normal text-slate-600">
@@ -492,12 +535,14 @@ export default function Landing() {
                           enter();
                         }
                       }}
-                      placeholder="music, travel, movies..."
+                      placeholder="Interests (optional): music, travel..."
                       enterKeyHint="go"
-                      className="h-14 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/50 focus:bg-cyan-300/[0.025] focus:ring-4 focus:ring-cyan-300/5"
+                      className="h-12 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/50 focus:bg-cyan-300/[0.025] focus:ring-4 focus:ring-cyan-300/5 lg:h-14"
                     />
 
-                    <div className="mt-2.5 flex flex-wrap gap-2">
+                    <div
+                      className={`${ROOMY_FLEX} mt-2 flex-wrap gap-2 lg:mt-2.5`}
+                    >
                       {["Music", "Travel", "Movies", "Gaming"].map(
                         (interest) => (
                           <button
@@ -515,123 +560,51 @@ export default function Landing() {
                     </div>
                   </div>
 
-                  {/* Options */}
+                  {/* Options (opens a sheet so the page never grows or jumps) */}
                   <button
                     type="button"
-                    aria-expanded={optionsOpen}
-                    onClick={() => setOptionsOpen((open) => !open)}
-                    className="flex w-full items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-3.5 text-left transition hover:border-white/15 hover:bg-white/[0.04]"
+                    aria-haspopup="dialog"
+                    onClick={() => setOptionsOpen(true)}
+                    className="flex min-h-[2.75rem] w-full items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-2.5 text-left transition hover:border-white/15 hover:bg-white/[0.04] lg:py-3.5"
                   >
                     <span>
                       <span className="block text-sm font-medium text-slate-300">
                         Options & privacy
                       </span>
 
-                      <span className="mt-0.5 block text-xs text-slate-600">
+                      <span
+                        className={`${ROOMY_BLOCK} mt-0.5 text-xs text-slate-600`}
+                      >
                         Premium, recovery, music and local data
                       </span>
                     </span>
 
-                    <span
-                      className={`text-slate-500 transition-transform ${
-                        optionsOpen ? "rotate-180" : ""
-                      }`}
-                    >
-                      ↓
+                    <span className="flex shrink-0 items-center gap-2 text-slate-500">
+                      {hasCode && (
+                        <span className="text-[11px] font-medium text-emerald-300">
+                          Code added
+                        </span>
+                      )}
+
+                      <span
+                        aria-hidden="true"
+                        className="text-lg leading-none"
+                      >
+                        ›
+                      </span>
                     </span>
                   </button>
 
-                  {optionsOpen && (
-                    <div className="space-y-4 rounded-2xl border border-white/[0.07] bg-black/20 p-4">
-                      {/* Premium */}
-                      <div>
-                        <label className="text-xs font-semibold text-violet-300">
-                          Premium / recovery
-                        </label>
-
-                        <input
-                          value={premiumCode}
-                          onChange={(event) =>
-                            setPremiumCode(
-                              event.target.value.toUpperCase(),
-                            )
-                          }
-                          placeholder="Premium code"
-                          autoComplete="off"
-                          className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-violet-300/40"
-                        />
-
-                        <input
-                          value={recoveryCode}
-                          onChange={(event) =>
-                            setRecoveryCode(
-                              event.target.value.toUpperCase(),
-                            )
-                          }
-                          placeholder="Recovery code"
-                          autoComplete="off"
-                          className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-violet-300/40"
-                        />
-
-                        {premiumMessage && (
-                          <p
-                            className={`mt-2 text-xs ${
-                              premiumMessage.startsWith(
-                                "Premium activated",
-                              ) ||
-                              premiumMessage.startsWith(
-                                "Premium restored",
-                              )
-                                ? "text-emerald-300"
-                                : "text-red-300"
-                            }`}
-                          >
-                            {premiumMessage}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Music */}
-                      <div className="rounded-xl border border-cyan-300/10 bg-cyan-300/[0.035] p-3">
-                        <p className="text-xs leading-5 text-slate-400">
-                          In group rooms, hosts can play a song preview
-                          or a YouTube link for everyone at once.
-                        </p>
-                      </div>
-
-                      {/* Privacy */}
-                      <div>
-                        <p className="mb-2 text-xs font-semibold text-slate-300">
-                          Privacy
-                        </p>
-
-                        <div className="space-y-2 text-xs text-slate-500">
-                          <p>✓ No email or phone number required</p>
-                          <p>✓ Your display name stays on this device</p>
-                          <p>✓ Camera stays off until you enable it</p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={forgetMe}
-                          className="mt-3 text-xs text-cyan-300 underline underline-offset-4 transition hover:text-white"
-                        >
-                          Forget me on this device
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Confirmations */}
-                  <div className="space-y-3">
-                    <label className="flex cursor-pointer items-start gap-3 text-sm leading-5 text-slate-400">
+                  <div className="space-y-2.5 lg:space-y-3">
+                    <label className="flex cursor-pointer items-start gap-3 text-xs leading-snug text-slate-400 lg:text-sm lg:leading-5">
                       <input
                         type="checkbox"
                         checked={ageConfirmed}
                         onChange={(event) =>
                           setAgeConfirmed(event.target.checked)
                         }
-                        className="mt-0.5 h-4 w-4 shrink-0 accent-cyan-400"
+                        className="mt-px h-[18px] w-[18px] shrink-0 accent-cyan-400 lg:mt-0.5"
                       />
 
                       <span>
@@ -639,14 +612,14 @@ export default function Landing() {
                       </span>
                     </label>
 
-                    <label className="flex cursor-pointer items-start gap-3 text-sm leading-5 text-slate-400">
+                    <label className="flex cursor-pointer items-start gap-3 text-xs leading-snug text-slate-400 lg:text-sm lg:leading-5">
                       <input
                         type="checkbox"
                         checked={agreedRules}
                         onChange={(event) =>
                           setAgreedRules(event.target.checked)
                         }
-                        className="mt-0.5 h-4 w-4 shrink-0 accent-cyan-400"
+                        className="mt-px h-[18px] w-[18px] shrink-0 accent-cyan-400 lg:mt-0.5"
                       />
 
                       <span>
@@ -656,36 +629,51 @@ export default function Landing() {
                     </label>
                   </div>
 
-                  {/* CTA */}
+                  {/* CTA: the label tells people what is still missing */}
                   <button
                     type="button"
                     onClick={enter}
                     disabled={!canEnter}
-                    className="group flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-300 to-blue-400 text-sm font-bold text-[#041019] shadow-[0_12px_40px_rgba(76,201,240,.16)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_50px_rgba(76,201,240,.24)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:translate-y-0"
+                    className="group flex h-12 w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-300 to-blue-400 text-sm font-bold text-[#041019] shadow-[0_12px_40px_rgba(76,201,240,.16)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_50px_rgba(76,201,240,.24)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 lg:h-14"
                   >
-                    {premiumBusy
-                      ? "Activating premium…"
-                      : "Start talking"}
+                    {ctaLabel}
 
-                    {!premiumBusy && (
-                      <span className="transition-transform group-hover:translate-x-1">
+                    {canEnter && (
+                      <span
+                        aria-hidden="true"
+                        className="transition-transform group-hover:translate-x-1"
+                      >
                         →
                       </span>
                     )}
                   </button>
 
-                  <p className="text-center text-xs text-slate-600">
+                  {premiumIsError && (
+                    <p
+                      role="alert"
+                      className="text-center text-xs text-red-300"
+                    >
+                      {premiumMessage}
+                    </p>
+                  )}
+
+                  <p
+                    className={`${ROOMY_BLOCK} text-center text-xs text-slate-600`}
+                  >
                     Leave whenever you want. You stay in control.
                   </p>
                 </div>
               </div>
             </div>
           </section>
-        </section>
+        </main>
+      </div>
 
+      {/* BELOW THE FOLD */}
+      <div className="relative z-10 mx-auto w-full max-w-7xl px-5 pb-16 sm:px-8 lg:px-10">
         {/* Product features */}
-        <section className="border-t border-white/[0.06] py-20 sm:py-28">
-          <div className="mb-12 max-w-2xl">
+        <section className="border-t border-white/[0.06] py-14 sm:py-28">
+          <div className="mb-10 max-w-2xl sm:mb-12">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
               Built for conversation
             </p>
@@ -724,7 +712,7 @@ export default function Landing() {
         </section>
 
         {/* Safety */}
-        <section className="grid gap-10 rounded-[2rem] border border-white/[0.07] bg-white/[0.025] p-7 sm:p-10 lg:grid-cols-[.8fr_1.2fr] lg:p-14">
+        <section className="grid gap-8 rounded-[2rem] border border-white/[0.07] bg-white/[0.025] p-6 sm:gap-10 sm:p-10 lg:grid-cols-[.8fr_1.2fr] lg:p-14">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
               Safety first
@@ -746,7 +734,7 @@ export default function Landing() {
         </section>
 
         {/* FAQ preview */}
-        <section className="py-20 sm:py-28">
+        <section className="py-14 sm:py-28">
           <div className="mx-auto max-w-3xl">
             <div className="text-center">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
@@ -758,7 +746,7 @@ export default function Landing() {
               </h2>
             </div>
 
-            <div className="mt-10 space-y-3">
+            <div className="mt-8 space-y-3 sm:mt-10">
               <FaqItem
                 question="Do I need an account?"
                 answer="The current experience can be started without an email or phone number. Your display name is handled locally by the application."
@@ -792,7 +780,7 @@ export default function Landing() {
         </section>
 
         {/* Final CTA */}
-        <section className="relative overflow-hidden rounded-[2rem] border border-cyan-300/10 bg-gradient-to-br from-cyan-300/[0.08] via-white/[0.025] to-violet-400/[0.08] px-6 py-16 text-center sm:px-10 sm:py-20">
+        <section className="relative overflow-hidden rounded-[2rem] border border-cyan-300/10 bg-gradient-to-br from-cyan-300/[0.08] via-white/[0.025] to-violet-400/[0.08] px-6 py-14 text-center sm:px-10 sm:py-20">
           <div className="absolute left-1/2 top-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-300/10 blur-[100px]" />
 
           <div className="relative">
@@ -812,13 +800,13 @@ export default function Landing() {
             <button
               type="button"
               onClick={scrollToStart}
-              className="mt-8 rounded-2xl bg-white px-6 py-3.5 text-sm font-bold text-[#06101a] shadow-xl transition hover:-translate-y-0.5 hover:bg-cyan-50"
+              className="mt-8 h-12 rounded-2xl bg-white px-6 text-sm font-bold text-[#06101a] shadow-xl transition hover:-translate-y-0.5 hover:bg-cyan-50"
             >
               Start talking →
             </button>
           </div>
         </section>
-      </main>
+      </div>
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/[0.06]">
@@ -861,17 +849,37 @@ export default function Landing() {
         </div>
       </footer>
 
-      {staffAccessOpen && (
-        <StaffAccessModal
-          onClose={() => setStaffAccessOpen(false)}
+      {optionsOpen && (
+        <OptionsSheet
+          onClose={closeOptions}
+          premiumCode={premiumCode}
+          setPremiumCode={setPremiumCode}
+          recoveryCode={recoveryCode}
+          setRecoveryCode={setRecoveryCode}
+          premiumMessage={premiumMessage}
+          premiumIsError={premiumIsError}
+          onForget={forgetMe}
         />
       )}
+
+      {staffAccessOpen && <StaffAccessModal onClose={closeStaff} />}
 
       <style>{`
         @keyframes landingFade {
           from {
             opacity: 0;
             transform: translateY(7px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes landingSheetUp {
+          from {
+            opacity: 0;
+            transform: translateY(24px);
           }
           to {
             opacity: 1;
@@ -890,6 +898,168 @@ export default function Landing() {
           }
         }
       `}</style>
+    </div>
+  );
+}
+
+/* Bottom sheet on phones, centered dialog on larger screens. */
+function OptionsSheet({
+  onClose,
+  premiumCode,
+  setPremiumCode,
+  recoveryCode,
+  setRecoveryCode,
+  premiumMessage,
+  premiumIsError,
+  onForget,
+}) {
+  const [cleared, setCleared] = useState(false);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleEscape(event) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [onClose]);
+
+  function handleForget() {
+    onForget();
+    setCleared(true);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="options-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="flex max-h-[88dvh] w-full max-w-md flex-col overflow-hidden rounded-t-[1.75rem] border border-white/10 bg-[#0a1020] shadow-2xl shadow-black/60 animate-[landingSheetUp_.25s_ease-out] sm:rounded-[1.75rem]">
+        <div className="flex items-center justify-between gap-4 border-b border-white/[0.07] px-5 py-4">
+          <div>
+            <h2
+              id="options-title"
+              className="text-lg font-bold tracking-[-0.03em] text-white"
+            >
+              Options & privacy
+            </h2>
+
+            <p className="mt-0.5 text-xs text-slate-500">
+              All optional. You can start without any of this.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 shrink-0 rounded-xl border border-white/10 px-4 text-sm font-medium text-slate-200 transition hover:bg-white/5"
+          >
+            Done
+          </button>
+        </div>
+
+        <div className="space-y-4 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4">
+          {/* Premium */}
+          <div>
+            <p className="text-xs font-semibold text-violet-300">
+              Premium / recovery
+            </p>
+
+            <input
+              value={premiumCode}
+              onChange={(event) =>
+                setPremiumCode(event.target.value.toUpperCase())
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") onClose();
+              }}
+              placeholder="Premium code"
+              aria-label="Premium code"
+              autoCapitalize="characters"
+              autoComplete="off"
+              enterKeyHint="done"
+              className="mt-2 h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-base text-white outline-none placeholder:text-slate-600 focus:border-violet-300/40"
+            />
+
+            <input
+              value={recoveryCode}
+              onChange={(event) =>
+                setRecoveryCode(event.target.value.toUpperCase())
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") onClose();
+              }}
+              placeholder="Recovery code"
+              aria-label="Recovery code"
+              autoCapitalize="characters"
+              autoComplete="off"
+              enterKeyHint="done"
+              className="mt-2 h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-base text-white outline-none placeholder:text-slate-600 focus:border-violet-300/40"
+            />
+
+            {premiumMessage && (
+              <p
+                className={`mt-2 text-xs ${
+                  premiumIsError ? "text-red-300" : "text-emerald-300"
+                }`}
+              >
+                {premiumMessage}
+              </p>
+            )}
+          </div>
+
+          {/* Music */}
+          <div className="rounded-xl border border-cyan-300/10 bg-cyan-300/[0.035] p-3">
+            <p className="text-xs leading-5 text-slate-400">
+              In group rooms, hosts can play a song preview or a YouTube
+              link for everyone at once.
+            </p>
+          </div>
+
+          {/* Privacy */}
+          <div>
+            <p className="mb-2 text-xs font-semibold text-slate-300">
+              Privacy
+            </p>
+
+            <div className="space-y-2 text-xs text-slate-500">
+              <p>✓ No email or phone number required</p>
+              <p>✓ Your display name stays on this device</p>
+              <p>✓ Camera stays off until you enable it</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleForget}
+              className="mt-3 text-xs text-cyan-300 underline underline-offset-4 transition hover:text-white"
+            >
+              Forget me on this device
+            </button>
+
+            {cleared && (
+              <p className="mt-2 text-xs text-emerald-300">
+                Cleared. A fresh anonymous ID will be used next time.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -918,7 +1088,7 @@ function FeatureCard({ number, title, description, icon }) {
         </span>
       </div>
 
-      <h3 className="mt-10 text-lg font-semibold text-white">
+      <h3 className="mt-8 text-lg font-semibold text-white sm:mt-10">
         {title}
       </h3>
 
@@ -1027,7 +1197,7 @@ function StaffAccessModal({ onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-5 backdrop-blur-md"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-labelledby="staff-access-title"
@@ -1041,7 +1211,7 @@ function StaffAccessModal({ onClose }) {
         onSubmit={signIn}
         className="w-full max-w-md overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0a1020] shadow-2xl shadow-black/60"
       >
-        <div className="border-b border-white/[0.07] px-6 py-6">
+        <div className="border-b border-white/[0.07] px-5 py-5 sm:px-6 sm:py-6">
           <div className="flex items-start justify-between gap-5">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
@@ -1060,7 +1230,7 @@ function StaffAccessModal({ onClose }) {
               type="button"
               onClick={onClose}
               aria-label="Close staff access"
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 text-xl text-slate-500 transition hover:bg-white/5 hover:text-white"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 text-xl text-slate-500 transition hover:bg-white/5 hover:text-white"
             >
               ×
             </button>
@@ -1072,7 +1242,7 @@ function StaffAccessModal({ onClose }) {
           </p>
         </div>
 
-        <div className="p-6">
+        <div className="p-5 sm:p-6">
           <label
             htmlFor="staff-password"
             className="mb-2 block text-sm font-medium text-slate-300"
@@ -1088,11 +1258,14 @@ function StaffAccessModal({ onClose }) {
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="current-password"
             placeholder="Enter password"
-            className="h-13 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/40 focus:ring-4 focus:ring-cyan-300/5"
+            className="h-12 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/40 focus:ring-4 focus:ring-cyan-300/5"
           />
 
           {error && (
-            <p className="mt-3 rounded-xl border border-red-400/10 bg-red-400/5 px-3 py-2 text-sm text-red-300">
+            <p
+              role="alert"
+              className="mt-3 rounded-xl border border-red-400/10 bg-red-400/5 px-3 py-2 text-sm text-red-300"
+            >
               {error}
             </p>
           )}
@@ -1100,7 +1273,7 @@ function StaffAccessModal({ onClose }) {
           <button
             type="submit"
             disabled={busy || !password}
-            className="mt-5 flex h-13 w-full items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-300 to-blue-400 px-4 text-sm font-bold text-[#041019] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40"
+            className="mt-5 flex h-12 w-full items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-300 to-blue-400 px-4 text-sm font-bold text-[#041019] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {busy ? "Verifying..." : "Continue securely"}
           </button>
