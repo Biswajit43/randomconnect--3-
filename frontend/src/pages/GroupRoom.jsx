@@ -490,7 +490,7 @@ export default function GroupRoom() {
             <button onClick={leave} className="ui-button ui-button-danger shrink-0 bg-coral px-5 text-sm text-ink shadow-lg shadow-coral/10 sm:px-6">Leave room</button>
           </div>
         </div>
-        <aside className="flex flex-col gap-4 min-h-0 lg:min-h-0">
+        <aside className="flex flex-col gap-4 min-h-0 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
           <QuickGamePanel game={game} isModerator={isModerator} onStart={startGame} onTap={tapGame} onAnswer={answerGame} onDraw={drawGame} isDrawer={game?.drawerId === socket.id} drawWord={drawWord} isBombTurn={game?.bombTurnId === socket.id} canEndGame={["admin", "developer", "premium"].includes(role)} onStop={stopGame} error={gameError} unoHand={unoHand} isUnoTurn={game?.unoTurnId === socket.id} mustCallUno={game?.unoMustCall === socket.id} onUno={unoAction} />
           {isModerator && visibleWaiting.length > 0 && (
             <div className="bg-panel/85 rounded-2xl border border-violet/30 overflow-hidden surface-lift shrink-0">
@@ -508,11 +508,11 @@ export default function GroupRoom() {
               </div>
             </div>
           )}
-          <div className="flex flex-col bg-panel/85 rounded-xl border border-white/10 overflow-hidden surface-lift h-[60vh] max-h-[60vh] animate-enter lg:h-auto lg:flex-1 lg:max-h-none lg:min-h-0">
+          <div className="flex flex-col bg-panel/85 rounded-xl border border-white/10 overflow-hidden surface-lift h-[60vh] max-h-[60vh] shrink-0 animate-enter lg:h-[min(60vh,42rem)] lg:max-h-[min(60vh,42rem)] lg:flex-none lg:min-h-0">
             <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between shrink-0">
               <div className="min-w-0">
                 <p className="font-display text-sm text-white">Room chat</p>
-                <p className="text-[11px] text-mist/60 mt-0.5">Say hi and keep it respectful.</p>
+                <p className="text-[11px] text-mist/60 mt-0.5">Chat scrolls here. Hosts can type /play song name.</p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0"><button onClick={addConversationSpark} className="ui-button ui-button-violet min-h-9 px-2 text-[11px]">✦ spark</button>{isModerator && <button onClick={() => setDraft("/play ")} className="ui-button ui-button-primary min-h-9 bg-signal/10 px-2 text-[11px] text-signal2">+ song</button>}</div>
             </div>

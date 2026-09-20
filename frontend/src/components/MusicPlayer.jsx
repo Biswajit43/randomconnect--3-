@@ -183,7 +183,7 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
         <div className="flex items-center gap-2.5 bg-panel border border-signal/20 rounded-xl px-3 py-2.5 mb-3 text-xs">
           <span className="text-base" aria-hidden="true">🎵</span>
           <p className="text-mist truncate">
-            <span className="text-white font-medium">Room music:</span> host types <code className="text-signal2">/play song</code> or pastes a YouTube link.
+            <span className="text-white font-medium">Room music:</span> host types <code className="text-signal2">/play song</code> for a preview or pastes a YouTube link for full playback.
           </p>
         </div>
       ) : (
