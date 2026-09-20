@@ -209,7 +209,7 @@ export default function ChatRoom() {
             {blockedReason === "age_confirmation_required" && "You must confirm you're 18+ to continue."}
             {blockedReason === "server_error" && "Something went wrong on our end. Please try again in a moment."}
           </p>
-          <button onClick={() => navigate("/")} className="mt-6 px-5 py-2.5 rounded-lg bg-signal text-ink font-semibold">
+          <button onClick={() => navigate("/")} className="ui-button ui-button-primary mt-6 px-5">
             Back home
           </button>
         </div>

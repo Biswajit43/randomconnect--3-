@@ -32,7 +32,7 @@ export default function Guide() {
     <main className="min-h-screen px-4 py-6 sm:px-6 md:px-10">
       <div className="mx-auto max-w-5xl">
         <div className="flex items-center justify-between gap-3">
-          <button onClick={() => navigate(-1)} className="text-sm text-mist hover:text-white">← Back</button>
+          <button onClick={() => navigate(-1)} className="ui-button ui-button-muted px-3 text-sm">← Back</button>
           <button onClick={() => navigate("/")} className="font-display font-bold text-white">random<span className="text-signal">connect</span></button>
         </div>
         <header className="mt-10 max-w-2xl">
@@ -51,7 +51,7 @@ export default function Guide() {
             <h2 className="mt-2 font-display text-2xl font-semibold text-white">Badges that mean something.</h2>
             <p className="mt-2 text-sm leading-relaxed text-mist">A badge unlocks from a real friend redeeming your invite — not from fake joins or spam. Every successful referral gives both people 30 days of Premium.</p>
             <div className="mt-5 grid gap-2 sm:grid-cols-2">{badges.map(([icon, name, text]) => <div key={name} className="flex items-center gap-3 rounded-xl border border-white/10 bg-panel/60 p-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-violet/15 text-xl text-violet">{icon}</span><div><p className="text-sm font-semibold text-white">{name}</p><p className="text-xs text-mist">{text}</p></div></div>)}</div>
-            <button onClick={() => navigate("/profile")} className="mt-5 rounded-xl bg-violet px-4 py-2.5 text-sm font-semibold text-ink hover:brightness-110">View my progress</button>
+            <button onClick={() => navigate("/profile")} className="ui-button mt-5 bg-violet px-4 text-sm text-ink">View my progress</button>
           </article>
           <article className="rounded-2xl border border-signal/20 bg-panel/75 p-5 sm:p-6">
             <p className="font-mono text-xs uppercase tracking-[0.18em] text-signal">Room rules</p>

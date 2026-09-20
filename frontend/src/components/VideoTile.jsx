@@ -198,7 +198,7 @@ export default function VideoTile({
         <div className="absolute inset-0 flex items-center justify-center z-30 bg-black/40 backdrop-blur-sm">
           <button 
             onClick={() => videoRef.current?.play().then(() => setPlaybackBlocked(false)).catch(() => {})} 
-            className="flex items-center gap-2 rounded-full border border-signal/40 bg-black/80 px-4 py-2 sm:px-5 sm:py-3 text-xs sm:text-sm font-semibold text-signal2 shadow-xl hover:bg-signal/20 transition-all active:scale-95"
+            className="ui-button ui-button-muted flex items-center gap-2 border-signal/40 bg-black/80 px-4 text-xs text-signal2 shadow-xl sm:px-5 sm:text-sm"
           >
             <svg className="size-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             Tap to enable video

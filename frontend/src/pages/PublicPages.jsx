@@ -4,7 +4,7 @@ const pageContent = {
   pricing: {
     eyebrow: "Simple by design",
     title: "Choose how you connect.",
-    description: "The core RandomConnect experience stays open and easy to join. Premium adds identity features without changing the way conversations work.",
+    description: "The core RandomConnect experience stays open and easy to join. Premium adds room-hosting permissions and identity features without changing the way conversations work.",
     seoTitle: "Pricing | RandomConnect",
     seoDescription: "Explore RandomConnect access and Premium identity features.",
   },
@@ -71,7 +71,7 @@ function PricingContent() {
   return <>
     <section className="public-card-grid" aria-label="Access options">
       <article className="public-card public-card-featured"><span className="card-kicker">Everyone</span><h2>Open access</h2><p>Join 1-to-1 conversations and live group rooms with no account or subscription.</p><ul><li>Random 1-to-1 matching</li><li>Voice and video rooms</li><li>Room chat and host controls</li><li>Leave or skip whenever you want</li></ul><ActionLink to="/rooms">Start talking</ActionLink></article>
-      <article className="public-card"><span className="card-kicker">Premium</span><h2>More identity, still lightweight</h2><p>Premium is for people who want to carry a little more continuity into the community.</p><ul><li>Profile photo identity</li><li>Community rewards and badges</li><li>Recovery support for Premium time</li><li>No access to private admin controls</li></ul><ActionLink to="/">Redeem an invite</ActionLink></article>
+      <article className="public-card"><span className="card-kicker">Premium</span><h2>More room control, still lightweight</h2><p>Premium currently adds the permissions already supported by the room service.</p><ul><li>Profile photo identity</li><li>Community rewards and badges</li><li>Moderate normal users in group rooms</li><li>Control shared room music and start mini-games</li><li>No access to private admin controls</li></ul><a href="mailto:hello@randomchats.me?subject=RandomConnect%20early%20access" className="button button-primary">Get early access</a></article>
     </section>
     <ContentSection title="No paywall around conversation"><p>RandomConnect does not put the basic ability to talk behind a subscription. Premium is an optional identity layer, not a requirement for joining the room.</p></ContentSection>
   </>;

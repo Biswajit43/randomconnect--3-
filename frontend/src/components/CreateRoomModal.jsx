@@ -16,8 +16,8 @@ export default function CreateRoomModal({ open, onClose, onCreate, creating }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <form onSubmit={submit} className="w-full max-w-md bg-panel rounded-2xl border border-white/10 p-6">
-        <h3 className="font-display text-lg font-semibold text-white mb-1">Start a room</h3>
+      <form onSubmit={submit} className="w-full max-w-md bg-panel rounded-xl border border-white/10 p-6 surface-lift animate-enter" role="dialog" aria-modal="true" aria-labelledby="create-room-title">
+        <h3 id="create-room-title" className="font-display text-lg font-semibold text-white mb-1">Start a room</h3>
         <p className="text-sm text-mist mb-5">Anyone can join while it's live. Give it a name people will recognize.</p>
 
         <label className="block text-xs font-mono uppercase tracking-wide text-mist mb-1.5">Room name</label>
@@ -70,13 +70,13 @@ export default function CreateRoomModal({ open, onClose, onCreate, creating }) {
         </div>
 
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-mist hover:text-white">
+          <button type="button" onClick={onClose} className="ui-button ui-button-muted px-4">
             Cancel
           </button>
           <button
             type="submit"
             disabled={!name.trim() || creating}
-            className="px-4 py-2 rounded-lg bg-signal text-ink text-sm font-semibold disabled:opacity-40 hover:brightness-110 active:scale-95 transition"
+            className="ui-button ui-button-primary px-4 disabled:opacity-40"
           >
             {creating ? "Creating…" : "Create & join"}
           </button>

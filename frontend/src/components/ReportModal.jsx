@@ -17,8 +17,8 @@ export default function ReportModal({ open, onClose, onSubmit }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="w-full max-w-md bg-panel rounded-2xl border border-white/10 p-6">
-        <h3 className="font-display text-lg font-semibold text-white mb-1">Report this person</h3>
+      <div className="w-full max-w-md bg-panel rounded-xl border border-white/10 p-6 surface-lift animate-enter" role="dialog" aria-modal="true" aria-labelledby="report-title">
+          <h3 id="report-title" className="font-display text-lg font-semibold text-white mb-1">Report this person</h3>
         <p className="text-sm text-mist mb-4">
           This ends the session immediately. Reports involving minors are prioritized and, where
           required by law, referred to the relevant authorities.
@@ -55,12 +55,12 @@ export default function ReportModal({ open, onClose, onSubmit }) {
         />
 
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-mist hover:text-white">
+          <button onClick={onClose} className="ui-button ui-button-muted px-4">
             Cancel
           </button>
           <button
             onClick={() => onSubmit({ reason, details })}
-            className="px-4 py-2 rounded-lg bg-coral text-ink text-sm font-semibold hover:brightness-110"
+            className="ui-button ui-button-danger px-4"
           >
             Submit report
           </button>

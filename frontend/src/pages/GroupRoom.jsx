@@ -370,7 +370,7 @@ export default function GroupRoom() {
   return (
     <div className="min-h-screen flex flex-col px-3 sm:px-4 md:px-8 py-3 sm:py-4">
       <header className="flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-white/5">
-        <button onClick={leave} className="text-mist hover:text-white text-sm transition shrink-0">← Rooms</button>
+        <button onClick={leave} className="ui-button ui-button-muted shrink-0 px-3 text-sm">← Rooms</button>
         <div className="text-center flex-1 min-w-0 order-3 sm:order-none basis-full sm:basis-auto">
           <h1 className="font-display font-semibold text-white flex items-center gap-2 justify-center truncate">
             <span className="truncate">{room?.name || "Room"}</span>
@@ -421,7 +421,7 @@ export default function GroupRoom() {
               </div>
             ))}
           </div>
-          <div className="relative sticky bottom-0 z-50 pointer-events-auto flex flex-wrap items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
+          <div className="sticky bottom-0 z-50 pointer-events-auto flex flex-wrap items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
             <IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton>
             <IconButton onClick={toggleCam} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton>
             <IconButton onClick={flipCamera} disabled={!camOn} active={false} label="Switch front and rear camera">↔</IconButton>
@@ -446,7 +446,7 @@ export default function GroupRoom() {
               </div>
             </div>
           )}
-          <div className="flex flex-col bg-panel/85 rounded-2xl border border-white/10 overflow-hidden surface-lift h-[60vh] max-h-[60vh] lg:h-auto lg:flex-1 lg:max-h-none lg:min-h-0">
+          <div className="flex flex-col bg-panel/85 rounded-xl border border-white/10 overflow-hidden surface-lift h-[60vh] max-h-[60vh] animate-enter lg:h-auto lg:flex-1 lg:max-h-none lg:min-h-0">
             <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between shrink-0">
               <div className="min-w-0">
                 <p className="font-display text-sm text-white">Room chat</p>
@@ -465,7 +465,7 @@ export default function GroupRoom() {
             </div>
             <div className="p-3 border-t border-white/5 flex gap-2 shrink-0">
               <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === "Enter" && sendMessage()} placeholder="Say something…" maxLength={2000} className="flex-1 min-w-0 bg-panel2 rounded-lg px-3 py-2 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:outline-signal" />
-              <button onClick={sendMessage} className="px-4 py-2 rounded-lg bg-signal text-ink text-sm font-semibold hover:brightness-110 transition shrink-0">Send</button>
+              <button onClick={sendMessage} className="ui-button ui-button-primary px-4 shrink-0">Send</button>
             </div>
           </div>
         </aside>

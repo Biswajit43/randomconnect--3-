@@ -215,19 +215,19 @@ export default function MusicPlayer({ music, isModerator, onStop }) {
               toggleLocalPlayback();
               setNeedsEnable(false);
             }}
-            className="shrink-0 px-3 py-1.5 rounded-lg bg-signal text-ink text-xs font-semibold whitespace-nowrap"
+            className="ui-button ui-button-primary shrink-0 px-3 text-xs whitespace-nowrap"
           >
             Play here
           </button>
         )}
         <button
           onClick={toggleLocalPlayback}
-          className="shrink-0 px-3 py-1.5 rounded-lg bg-panel2 text-mist text-xs font-semibold whitespace-nowrap hover:text-white"
+          className="ui-button ui-button-muted shrink-0 px-3 text-xs whitespace-nowrap"
         >
           {localPaused ? "Play" : "Pause"}
         </button>
         {isModerator && (
-          <button onClick={onStop} className="px-3 py-1.5 rounded-lg bg-coral/15 text-coral text-xs whitespace-nowrap">
+          <button onClick={onStop} className="ui-button ui-button-danger px-3 text-xs whitespace-nowrap">
             Stop
           </button>
         )}

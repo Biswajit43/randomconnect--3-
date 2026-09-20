@@ -4,18 +4,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#0E1220",       // base background — deep indigo-charcoal
-        panel: "#161B2E",     // card/panel surface
-        panel2: "#1E2440",    // elevated surface
-        signal: "#4CC9F0",    // primary accent — "live signal" cyan
-        signal2: "#7BE0D6",   // secondary signal tone
+        ink: "#0B1117",       // base background
+        panel: "#14212A",     // card/panel surface
+        panel2: "#1A2B35",    // elevated surface
+        signal: "#82E6C2",    // primary accent
+        signal2: "#A6F0D7",   // secondary signal tone
         coral: "#FF6B6B",     // stop / danger / skip
-        violet: "#9D8DF1",    // secondary accent
-        mist: "#8792B0",      // muted text
+        violet: "#B8A4FF",    // secondary accent
+        mist: "#9AABB5",      // muted text
       },
       fontFamily: {
         display: ["'Space Grotesk'", "sans-serif"],
-        body: ["'Inter'", "sans-serif"],
+        body: ["'DM Sans'", "sans-serif"],
         mono: ["'JetBrains Mono'", "monospace"],
       },
       keyframes: {

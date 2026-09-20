@@ -107,15 +107,15 @@ export default function Rooms() {
 
   return (
     <div className="min-h-screen">
-      <header className="px-4 sm:px-5 md:px-8 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/5 bg-ink/30 backdrop-blur-md">
+      <header className="px-4 sm:px-5 md:px-8 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-ink/60 backdrop-blur-md animate-enter">
         <span className="font-display font-bold text-lg tracking-tight text-white shrink-0">
           random<span className="text-signal">connect</span>
         </span>
         <div className="flex items-center gap-2 ml-auto min-w-0 max-w-full">
         <NameBadge name={name} onChange={(n) => { setName(n); setDisplayName(n); }} />
-        <button onClick={() => navigate("/profile")} className="shrink-0 rounded-lg border border-violet/30 px-2.5 py-2 text-xs text-violet hover:bg-violet/10" aria-label="Open profile and rewards" title="Profile and rewards">Profile</button>
-        <button onClick={() => navigate("/guide")} className="shrink-0 rounded-lg border border-white/10 px-2.5 py-2 text-xs text-mist hover:text-white" aria-label="Open guide and feedback" title="Guide, badges, rules and feedback">Guide</button>
-        <button onClick={() => setLogoutOpen(true)} className="shrink-0 rounded-lg border border-coral/30 px-2.5 py-2 text-xs text-coral hover:bg-coral/10" aria-label="Log out" title="Log out">Log out</button>
+        <button onClick={() => navigate("/profile")} className="ui-button ui-button-muted shrink-0 border-violet/30 px-3 text-xs text-violet" aria-label="Open profile and rewards" title="Profile and rewards">Profile</button>
+        <button onClick={() => navigate("/guide")} className="ui-button ui-button-muted shrink-0 px-3 text-xs" aria-label="Open guide and feedback" title="Guide, badges, rules and feedback">Guide</button>
+        <button onClick={() => setLogoutOpen(true)} className="ui-button ui-button-danger shrink-0 px-3 text-xs" aria-label="Log out" title="Log out">Log out</button>
         <span className="flex items-center gap-2 text-sm text-signal2 font-mono shrink-0">
           <span className="w-2 h-2 rounded-full bg-signal animate-pulse" /> live
         </span>
@@ -153,7 +153,7 @@ export default function Rooms() {
 
           <button
             onClick={start1to1}
-            className="w-full py-3 rounded-xl bg-signal text-ink font-display font-semibold hover:brightness-110 active:scale-[0.98] transition shadow-lg shadow-signal/15"
+            className="ui-button ui-button-primary w-full shadow-lg shadow-signal/15"
           >
             Start 1-to-1 call
           </button>
@@ -204,7 +204,7 @@ export default function Rooms() {
               onClick={() => setModalOpen(true)}
               disabled={myRooms.length >= 2}
               title={myRooms.length >= 2 ? "Delete or edit an existing group before creating another" : "Start a group room"}
-              className="px-4 py-2.5 rounded-xl bg-violet/15 border border-violet/40 text-violet font-display font-semibold text-sm hover:bg-violet/25 transition whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+              className="ui-button shrink-0 border-violet/40 bg-violet/15 px-4 text-sm text-violet hover:bg-violet/25 whitespace-nowrap disabled:opacity-40"
             >
               {myRooms.length >= 2 ? "2 groups created" : "+ Start a room"}
             </button>

@@ -40,7 +40,7 @@ export default function ChatPanel({ roomId, partnerName = "Stranger" }) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-panel rounded-2xl border border-white/5 overflow-hidden">
+    <div className="flex flex-col h-full bg-panel rounded-xl border border-white/10 overflow-hidden surface-lift animate-enter">
       <div className="px-4 py-3 border-b border-white/5 font-display text-sm text-mist shrink-0">
         Chat
       </div>
@@ -87,7 +87,7 @@ export default function ChatPanel({ roomId, partnerName = "Stranger" }) {
         />
         <button
           onClick={send}
-          className="px-4 py-2 rounded-lg bg-signal text-ink text-sm font-semibold hover:brightness-110 active:scale-95 transition-transform min-h-[44px] shrink-0 touch-manipulation"
+          className="ui-button ui-button-primary px-4 min-h-[44px] shrink-0"
         >
           Send
         </button>

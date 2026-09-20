@@ -100,7 +100,7 @@ export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAn
               <span className="block text-sm font-semibold text-white">🃏 Last Card</span><span className="mt-1 block text-[11px] text-mist">Match colour or number</span>
             </button>
           </div>
-          <button onClick={() => onStart(mode)} className="mt-3 w-full rounded-xl bg-fuchsia-400 px-4 py-3 text-sm font-bold text-[#1b1022] shadow-lg shadow-fuchsia-500/15 hover:brightness-110">
+          <button onClick={() => onStart(mode)} className="ui-button mt-3 w-full bg-fuchsia-400 px-4 text-sm font-bold text-[#1b1022] shadow-lg shadow-fuchsia-500/15">
             Start {mode === "uno" ? "Last Card" : mode === "bomb" ? "Bomb Party" : mode === "draw" ? "Draw & Guess" : "Pulse Clash"}
           </button>
         </> : <p className="mt-4 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-center text-xs text-mist">Waiting for a host or Music Mod to start.</p>}
@@ -110,7 +110,7 @@ export default function QuickGamePanel({ game, isModerator, onStart, onTap, onAn
         <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3 text-center">
           {countdown && <><p className="text-sm font-semibold text-white">Get ready…</p><p className="mt-1 text-xs text-mist">Round {game.round} is about to begin</p></>}
 
-          {live && <><p className="text-sm font-semibold text-fuchsia-100">NOW!</p><button onClick={onTap} className="mt-3 h-24 w-full rounded-2xl bg-fuchsia-400 text-4xl font-black text-[#1b1022] shadow-[0_0_35px_rgba(232,121,249,0.55)] transition hover:scale-[1.02] active:scale-95">TAP</button></>}
+          {live && <><p className="text-sm font-semibold text-fuchsia-100">NOW!</p><button onClick={onTap} className="ui-button mt-3 h-24 w-full rounded-xl bg-fuchsia-400 text-4xl font-black text-[#1b1022] shadow-[0_0_35px_rgba(232,121,249,0.55)]">TAP</button></>}
 
           {question && <>
             <p className="text-left text-sm font-semibold leading-relaxed text-white">{game.question}</p>

@@ -7,7 +7,7 @@ export default function RoomCard({ room, onJoin }) {
     <button
       onClick={() => onJoin(room)}
       aria-label={`Join ${room.name}`}
-      className="relative w-full overflow-hidden text-left bg-panel/80 hover:bg-panel2 border border-white/5 hover:border-signal/40 rounded-2xl p-4 interactive-lift group focus-visible:ring-2 focus-visible:ring-signal/70"
+      className="relative w-full overflow-hidden text-left bg-panel/80 hover:bg-panel2 border border-white/10 hover:border-signal/40 rounded-xl p-4 interactive-lift group"
     >
       <span className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-signal/10 blur-3xl opacity-0 transition duration-300 group-hover:opacity-100" />
       <div className="flex items-start justify-between gap-3">

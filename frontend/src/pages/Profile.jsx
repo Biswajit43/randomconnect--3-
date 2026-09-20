@@ -85,7 +85,7 @@ export default function Profile() {
   return (
     <main className="min-h-screen px-4 py-6 sm:px-6 md:px-10">
       <div className="mx-auto max-w-2xl">
-        <button onClick={() => navigate("/rooms")} className="text-sm text-mist hover:text-white">← Back to rooms</button>
+        <button onClick={() => navigate("/rooms")} className="ui-button ui-button-muted px-3 text-sm">← Back to rooms</button>
         <header className="mt-8">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-violet">Private profile</p>
           <h1 className="mt-2 font-display text-3xl font-bold text-white">Your rewards</h1>
@@ -94,7 +94,7 @@ export default function Profile() {
 
         {loading ? <div className="mt-6 h-40 animate-pulse rounded-2xl border border-white/10 bg-panel/60" aria-label="Loading profile" /> : (
           <section className="mt-6 space-y-4">
-            <article className="rounded-2xl border border-violet/30 bg-panel/80 p-5 surface-lift">
+            <article className="rounded-xl border border-violet/30 bg-panel/80 p-5 surface-lift animate-enter">
               <div className="flex items-start justify-between gap-4">
                 <div><p className="text-xs uppercase tracking-wider text-violet">Premium status</p><h2 className="mt-1 font-display text-xl font-semibold text-white">{isPermanentStaff ? "Permanent staff Premium" : premium?.active ? "Premium active" : "No active Premium"}</h2></div>
                 <span className="rounded-full bg-violet/15 px-3 py-1 text-xs font-semibold text-violet">{isPermanentStaff ? "Lifetime" : premium?.active ? `${remaining} day${remaining === 1 ? "" : "s"} left` : "Invite to unlock"}</span>
@@ -104,7 +104,7 @@ export default function Profile() {
 
             {!isPermanentStaff && premium?.active && <article className="rounded-2xl border border-signal/20 bg-signal/5 p-5"><p className="text-xs uppercase tracking-wider text-signal2">Account recovery</p><h2 className="mt-1 font-display text-lg font-semibold text-white">Keep your Premium safe</h2><p className="mt-2 text-sm text-mist">Browser history or site data can remove your local device identity. Create a recovery code before that happens.</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={createRecovery} className="rounded-lg bg-signal px-3 py-2 text-xs font-semibold text-ink hover:brightness-110">Create recovery code</button>{recoveryCode && <button onClick={copyRecovery} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white hover:bg-white/5">Copy code</button>}</div>{recoveryCode && <p className="mt-3 break-all rounded-lg border border-white/10 bg-panel2 px-3 py-2 font-mono text-xs text-signal2">{recoveryCode}</p>}{recoveryMessage && <p className="mt-2 text-xs text-mist">{recoveryMessage}</p>}</article>}
 
-            <article className="rounded-2xl border border-white/10 bg-panel/80 p-5">
+            <article className="rounded-xl border border-white/10 bg-panel/80 p-5 animate-enter">
               <div className="flex items-center gap-4">
                 {avatar ? <img src={avatar} alt="Your profile" className="h-16 w-16 rounded-full object-cover border-2 border-violet/50" /> : <div className="grid h-16 w-16 place-items-center rounded-full bg-panel2 text-2xl text-violet">{getDisplayName().slice(0, 1).toUpperCase()}</div>}
                 <div><p className="text-xs uppercase tracking-wider text-violet">Premium profile identity</p><h2 className="mt-1 font-display text-lg font-semibold text-white">{getDisplayName()}</h2><p className="mt-1 text-xs text-mist">Your photo is shared only with people in your active room.</p></div>
