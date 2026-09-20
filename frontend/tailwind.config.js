@@ -4,14 +4,14 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#0B1117",       // base background
-        panel: "#14212A",     // card/panel surface
-        panel2: "#1A2B35",    // elevated surface
-        signal: "#82E6C2",    // primary accent
-        signal2: "#A6F0D7",   // secondary signal tone
-        coral: "#FF6B6B",     // stop / danger / skip
-        violet: "#B8A4FF",    // secondary accent
-        mist: "#9AABB5",      // muted text
+        ink: "#070B14",       // base background
+        panel: "#111A2B",     // card/panel surface
+        panel2: "#18233A",    // elevated surface
+        signal: "#67D9FF",    // electric blue primary accent
+        signal2: "#8FE8FF",   // cyan secondary signal tone
+        coral: "#FF7EB6",     // pink danger / stop accent
+        violet: "#A99BFF",    // violet secondary accent
+        mist: "#99A9BE",      // muted text
       },
       fontFamily: {
         display: ["'Space Grotesk'", "sans-serif"],
