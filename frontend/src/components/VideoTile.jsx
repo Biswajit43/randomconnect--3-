@@ -822,11 +822,11 @@ export default function VideoTile({
         {/* ====================================================== */}
 
         <div className="absolute inset-x-0 bottom-0 z-30 p-2.5 sm:p-3 md:p-4">
-          <div className="flex w-full items-end gap-2">
+          <div className="flex w-full flex-col items-stretch gap-2 sm:flex-row sm:items-end">
             {label && (
               <div className="min-w-0 flex-1">
                 <div
-                  className={`flex w-fit min-w-0 max-w-full items-center gap-2.5 rounded-xl border bg-gradient-to-r from-black/80 via-black/65 to-black/35 px-3 py-2 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:px-3.5 sm:py-2.5 md:px-4 ${
+                  className={`flex w-full min-w-0 max-w-full items-center gap-2.5 overflow-x-auto rounded-xl border bg-gradient-to-r from-black/80 via-black/65 to-black/35 px-3 py-2 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:w-fit sm:overflow-visible sm:px-3.5 sm:py-2.5 md:px-4 ${
                     isSpeaking
                       ? "border-cyan-300/35 shadow-[0_0_22px_rgba(34,211,238,0.12)]"
                       : tier.nameBorder
@@ -841,7 +841,7 @@ export default function VideoTile({
                   />
 
                   <span
-                    className={`min-w-0 break-words whitespace-normal text-sm font-bold leading-tight tracking-[-0.01em] sm:truncate sm:text-base lg:text-lg ${tier.nameText}`}
+                    className={`shrink-0 whitespace-nowrap text-xs font-bold leading-tight tracking-[-0.01em] sm:min-w-0 sm:truncate sm:text-base lg:text-lg ${tier.nameText}`}
                     title={label}
                   >
                     {label}

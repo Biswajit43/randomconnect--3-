@@ -482,36 +482,8 @@ export default function Landing() {
     if (!canEnter) return;
 
     if (recoveryCode.trim() || premiumCode.trim()) {
-      setPremiumBusy(true);
-      setPremiumMessage("");
-
-      try {
-        const result = recoveryCode.trim()
-          ? await api.redeemPremiumRecovery(
-            recoveryCode.trim(),
-            getFingerprint(),
-          )
-          : await api.redeemPremium(
-            premiumCode.trim(),
-            getFingerprint(),
-          );
-
-        if (result.token) {
-          localStorage.setItem("rc_premium_token", result.token);
-        }
-
-        setPremiumMessage(
-          recoveryCode.trim()
-            ? "Premium restored. You can view the details in Profile."
-            : "Premium activated. You can view the details in Profile.",
-        );
-      } catch (error) {
-        setPremiumMessage(error?.message || "Unable to activate premium.");
-        setPremiumBusy(false);
-        return;
-      }
-
-      setPremiumBusy(false);
+      const redeemed = await redeemPremiumCode();
+      if (!redeemed) return;
     }
 
     setDisplayName(name);
@@ -531,6 +503,37 @@ export default function Landing() {
         interests: tags,
       },
     });
+  }
+
+  async function redeemPremiumCode() {
+    if ((!recoveryCode.trim() && !premiumCode.trim()) || premiumBusy) {
+      return false;
+    }
+
+    setPremiumBusy(true);
+    setPremiumMessage("");
+
+    try {
+      const result = recoveryCode.trim()
+        ? await api.redeemPremiumRecovery(recoveryCode.trim(), getFingerprint())
+        : await api.redeemPremium(premiumCode.trim(), getFingerprint());
+
+      if (result.token) {
+        localStorage.setItem("rc_premium_token", result.token);
+      }
+
+      setPremiumMessage(
+        recoveryCode.trim()
+          ? "Premium restored. You can view the details in Profile."
+          : "Premium activated. You can view the details in Profile.",
+      );
+      return true;
+    } catch (error) {
+      setPremiumMessage(error?.message || "Unable to activate premium.");
+      return false;
+    } finally {
+      setPremiumBusy(false);
+    }
   }
 
   function forgetMe() {
@@ -1112,6 +1115,8 @@ export default function Landing() {
           setRecoveryCode={setRecoveryCode}
           premiumMessage={premiumMessage}
           premiumIsError={premiumIsError}
+          premiumBusy={premiumBusy}
+          onRedeem={redeemPremiumCode}
           onForget={forgetMe}
         />
       )}
@@ -1350,6 +1355,8 @@ function OptionsSheet({
   setRecoveryCode,
   premiumMessage,
   premiumIsError,
+  premiumBusy,
+  onRedeem,
   onForget,
 }) {
   const [cleared, setCleared] = useState(false);
@@ -1426,7 +1433,7 @@ function OptionsSheet({
                 setPremiumCode(event.target.value.toUpperCase())
               }
               onKeyDown={(event) => {
-                if (event.key === "Enter") onClose();
+                if (event.key === "Enter") onRedeem();
               }}
               placeholder="Premium code"
               aria-label="Premium code"
@@ -1442,7 +1449,7 @@ function OptionsSheet({
                 setRecoveryCode(event.target.value.toUpperCase())
               }
               onKeyDown={(event) => {
-                if (event.key === "Enter") onClose();
+                if (event.key === "Enter") onRedeem();
               }}
               placeholder="Recovery code"
               aria-label="Recovery code"
@@ -1460,6 +1467,15 @@ function OptionsSheet({
                 {premiumMessage}
               </p>
             )}
+
+            <button
+              type="button"
+              onClick={onRedeem}
+              disabled={premiumBusy || (!premiumCode.trim() && !recoveryCode.trim())}
+              className="mt-3 h-11 w-full rounded-xl bg-signal px-4 text-sm font-semibold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {premiumBusy ? "Activating…" : "Redeem code"}
+            </button>
           </div>
 
           {/* Music */}

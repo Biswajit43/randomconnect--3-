@@ -140,9 +140,8 @@ function ToastStack({ toasts }) {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`pointer-events-auto max-w-sm rounded-xl border bg-panel px-4 py-3 text-sm font-medium shadow-2xl animate-[rmToastIn_.22s_ease-out] ${
-            tones[toast.tone] || tones.info
-          }`}
+          className={`pointer-events-auto max-w-sm rounded-xl border bg-panel px-4 py-3 text-sm font-medium shadow-2xl animate-[rmToastIn_.22s_ease-out] ${tones[toast.tone] || tones.info
+            }`}
         >
           {toast.message}
         </div>
@@ -210,7 +209,7 @@ export default function Rooms() {
             localStorage.setItem("rc_staff_role", session.role);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
 
     refreshStaffLease();
 
@@ -284,7 +283,7 @@ export default function Rooms() {
   /* ---------- actions ---------- */
 
   async function logout() {
-    if (staffRole) await api.adminLogout().catch(() => {});
+    if (staffRole) await api.adminLogout().catch(() => { });
 
     clearLocalSession();
     setStaffRole(null);
@@ -420,14 +419,12 @@ export default function Rooms() {
 
   const subline =
     waitingCount > 0
-      ? `${waitingCount} ${
-          waitingCount === 1 ? "person is" : "people are"
-        } looking for a conversation right now.`
+      ? `${waitingCount} ${waitingCount === 1 ? "person is" : "people are"
+      } looking for a conversation right now.`
       : "Start a call, or drop into a room where people are talking.";
 
-  const optionsSummary = `${
-    preference.charAt(0).toUpperCase() + preference.slice(1)
-  }${interestTags.length ? ` · ${interestTags.join(", ")}` : ""}`;
+  const optionsSummary = `${preference.charAt(0).toUpperCase() + preference.slice(1)
+    }${interestTags.length ? ` · ${interestTags.join(", ")}` : ""}`;
 
   /* ---------------------------------------------------------------- */
   /*  Render                                                           */
@@ -526,7 +523,7 @@ export default function Rooms() {
             <Avatar name={name} size="lg" />
 
             <div className="min-w-0">
-              <h1 className="truncate font-display text-xl font-bold text-white sm:text-2xl">
+              <h1 className="min-w-0 max-w-full break-words font-display text-xl font-bold leading-tight text-white sm:text-2xl">
                 {greeting()}, {firstName}
               </h1>
 
@@ -579,9 +576,8 @@ export default function Rooms() {
                 Options
                 <svg
                   viewBox="0 0 24 24"
-                  className={`h-3.5 w-3.5 transition-transform ${
-                    optionsOpen ? "rotate-180" : ""
-                  }`}
+                  className={`h-3.5 w-3.5 transition-transform ${optionsOpen ? "rotate-180" : ""
+                    }`}
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2.2"
@@ -610,11 +606,10 @@ export default function Rooms() {
                     type="button"
                     aria-pressed={preference === option}
                     onClick={() => setPreference(option)}
-                    className={`min-w-0 rounded-lg border py-2 text-xs capitalize transition sm:text-sm ${
-                      preference === option
+                    className={`min-w-0 rounded-lg border py-2 text-xs capitalize transition sm:text-sm ${preference === option
                         ? "border-signal bg-signal/15 text-signal2"
                         : "border-white/10 bg-panel2 text-mist hover:border-white/20 hover:text-white"
-                    }`}
+                      }`}
                   >
                     {option}
                   </button>
@@ -991,9 +986,8 @@ function Avatar({ name, size = "md" }) {
   return (
     <span
       aria-hidden="true"
-      className={`flex shrink-0 select-none items-center justify-center rounded-full font-bold text-[#06101a] transition-colors duration-200 ${
-        sizes[size] || sizes.md
-      }`}
+      className={`flex shrink-0 select-none items-center justify-center rounded-full font-bold text-[#06101a] transition-colors duration-200 ${sizes[size] || sizes.md
+        }`}
       style={{
         backgroundColor: clean ? colorForName(clean) : "rgba(255,255,255,.14)",
       }}
@@ -1044,11 +1038,10 @@ function LiveIndicator({ count, compact = false }) {
 
   return (
     <span
-      className={`flex shrink-0 items-center gap-1.5 font-mono text-xs font-medium text-signal2 ${
-        compact
+      className={`flex shrink-0 items-center gap-1.5 font-mono text-xs font-medium text-signal2 ${compact
           ? "rounded-full border border-signal/20 bg-signal/5 px-2.5 py-1.5"
           : ""
-      }`}
+        }`}
     >
       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-signal sm:h-2 sm:w-2" />
       {label}
@@ -1217,11 +1210,10 @@ function NameEditorModal({ currentName, onSave, onClose }) {
           placeholder="What should people call you?"
           aria-invalid={touched && empty}
           aria-describedby={touched && empty ? "rc-name-error" : undefined}
-          className={`mt-1.5 h-12 w-full rounded-xl border bg-panel2 px-3 text-base text-white outline-none placeholder:text-mist/50 ${
-            touched && empty
+          className={`mt-1.5 h-12 w-full rounded-xl border bg-panel2 px-3 text-base text-white outline-none placeholder:text-mist/50 ${touched && empty
               ? "border-coral/60"
               : "border-white/10 focus:border-signal/50"
-          }`}
+            }`}
         />
 
         {touched && empty && (
