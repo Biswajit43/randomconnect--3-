@@ -841,7 +841,7 @@ export default function VideoTile({
                   />
 
                   <span
-                    className={`min-w-0 truncate text-sm font-bold leading-tight tracking-[-0.01em] sm:text-base lg:text-lg ${tier.nameText}`}
+                    className={`min-w-0 break-words whitespace-normal text-sm font-bold leading-tight tracking-[-0.01em] sm:truncate sm:text-base lg:text-lg ${tier.nameText}`}
                     title={label}
                   >
                     {label}
