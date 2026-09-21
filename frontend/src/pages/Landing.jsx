@@ -1,13 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import PulseConnector from "../components/PulseConnector.jsx";
 import { getDisplayName, setDisplayName, getFingerprint } from "../lib/socket.js";
 import { api } from "../lib/api.js";
 
-const TAGLINES = [
-  "meet someone new.",
-  "make a real connection.",
-  "just talk, freely.",
+/* ------------------------------------------------------------------ */
+/*  Design tokens                                                      */
+/*  Base colours come from the rooms page: deep navy + cyan + violet.  */
+/*  --a / --b are the "live" accent pair. They change with each        */
+/*  tagline and fade smoothly (see @property in the style block), so   */
+/*  the logo, button, glows and icons all shift colour together.       */
+/* ------------------------------------------------------------------ */
+
+const SLIDES = [
+  { tagline: "meet someone new.", a: "#4CC9F0", b: "#9D8DF1" },
+  { tagline: "make a real connection.", a: "#7BE0D6", b: "#4CC9F0" },
+  { tagline: "just talk, freely.", a: "#9D8DF1", b: "#FF8FB1" },
 ];
 
 const AVATAR_COLORS = [
@@ -23,13 +30,10 @@ const AVATAR_COLORS = [
   Height-gated visibility.
   On phones the first screen must fit without scrolling, so extras only appear
   when the viewport is tall enough (or on desktop, lg+). Written out in full so
-  Tailwind can see every class. Needs Tailwind 3.1+; on older versions the extras
-  simply stay hidden on phones, which is the safe failure.
+  Tailwind can see every class. Needs Tailwind 3.1+.
 */
 const ROOMY_BLOCK = "hidden [@media(min-height:720px)]:block lg:block";
 const ROOMY_FLEX = "hidden [@media(min-height:720px)]:flex lg:flex";
-const ROOMY_INLINE_FLEX = "hidden [@media(min-height:720px)]:inline-flex lg:inline-flex";
-const MID_INLINE_FLEX = "hidden [@media(min-height:620px)]:inline-flex lg:inline-flex";
 
 function colorForName(text) {
   let hash = 0;
@@ -53,12 +57,304 @@ function scrollToStart() {
   }, 500);
 }
 
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(query.matches);
+
+    update();
+    query.addEventListener?.("change", update);
+
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+
+  return reduced;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Icons (24x24, stroke based, inherit currentColor)                  */
+/* ------------------------------------------------------------------ */
+
+const ICONS = {
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="9" rx="2.5" />
+      <path d="M8 11V8a4 4 0 018 0v3" />
+    </>
+  ),
+  camera: (
+    <>
+      <path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3V19H4z" />
+      <circle cx="12" cy="13.5" r="3.2" />
+      <path d="M3 3l18 18" />
+    </>
+  ),
+  sliders: (
+    <>
+      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+      <circle cx="15" cy="7" r="2" />
+      <circle cx="9" cy="17" r="2" />
+    </>
+  ),
+  shield: (
+    <>
+      <path d="M12 3l7.5 3v5.5c0 4.6-3.1 8-7.5 9.5-4.4-1.5-7.5-4.9-7.5-9.5V6L12 3z" />
+      <path d="M9 12l2.2 2.2L15.5 10" />
+    </>
+  ),
+  skip: (
+    <>
+      <path d="M5 5l9 7-9 7V5z" />
+      <path d="M18 5v14" />
+    </>
+  ),
+  flag: (
+    <>
+      <path d="M6 21V4" />
+      <path d="M6 5h11l-2 3.5 2 3.5H6" />
+    </>
+  ),
+  arrow: <path d="M5 12h14M13 6l6 6-6 6" />,
+};
+
+function Icon({ name, className = "h-5 w-5" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+      focusable="false"
+    >
+      {ICONS[name]}
+    </svg>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Logo mark                                                          */
+/*  Two linked rings = two people connecting. The lens where they      */
+/*  overlap holds the "connected" pulse. Outlined like the X mark,     */
+/*  with a light sweep, a pulse and two orbiting sparks.               */
+/* ------------------------------------------------------------------ */
+
+function LogoMark({
+  className = "",
+  animated = true,
+  strokeWidth = 3,
+  detail = true,
+}) {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const baseId = `rcBase${uid}`;
+  const shineId = `rcShine${uid}`;
+  const glowId = `rcGlow${uid}`;
+  const coreId = `rcCore${uid}`;
+
+  const R = 104;
+  const LEFT = 150;
+  const RIGHT = 250;
+
+  return (
+    <svg
+      viewBox="0 0 400 400"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <defs>
+        <linearGradient
+          id={baseId}
+          gradientUnits="userSpaceOnUse"
+          x1="40"
+          y1="80"
+          x2="360"
+          y2="320"
+        >
+          <stop offset="0" style={{ stopColor: "var(--a)" }} />
+          <stop offset="1" style={{ stopColor: "var(--b)" }} />
+        </linearGradient>
+
+        <linearGradient
+          id={shineId}
+          gradientUnits="userSpaceOnUse"
+          x1="-300"
+          y1="40"
+          x2="-100"
+          y2="360"
+        >
+          <stop offset="0" stopColor="#fff" stopOpacity="0" />
+          <stop offset="0.5" stopColor="#fff" stopOpacity="0.95" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+
+          {animated && (
+            <>
+              <animate
+                attributeName="x1"
+                values="-300;-300;500"
+                keyTimes="0;0.3;1"
+                dur="5.5s"
+                repeatCount="indefinite"
+              />
+              <animate
+                attributeName="x2"
+                values="-100;-100;700"
+                keyTimes="0;0.3;1"
+                dur="5.5s"
+                repeatCount="indefinite"
+              />
+            </>
+          )}
+        </linearGradient>
+
+        <radialGradient id={coreId}>
+          <stop
+            offset="0"
+            style={{ stopColor: "var(--a)", stopOpacity: 0.55 }}
+          />
+          <stop
+            offset="1"
+            style={{ stopColor: "var(--a)", stopOpacity: 0 }}
+          />
+        </radialGradient>
+
+        <filter id={glowId} x="-25%" y="-25%" width="150%" height="150%">
+          <feGaussianBlur stdDeviation="9" />
+        </filter>
+      </defs>
+
+      {/* soft outer glow */}
+      <g
+        stroke={`url(#${baseId})`}
+        strokeWidth={strokeWidth * 3}
+        opacity="0.4"
+        filter={`url(#${glowId})`}
+      >
+        <circle cx={LEFT} cy="200" r={R} />
+        <circle cx={RIGHT} cy="200" r={R} />
+      </g>
+
+      {/* the lens where the two people meet */}
+      <path
+        d="M200 108.8 A104 104 0 0 1 200 291.2 A104 104 0 0 1 200 108.8 Z"
+        fill={`url(#${coreId})`}
+      />
+
+      {/* inner hairline rings, the "double outline" */}
+      {detail && (
+        <g stroke={`url(#${baseId})`} strokeWidth="1.5" opacity="0.3">
+          <circle cx={LEFT} cy="200" r={R - 22} />
+          <circle cx={RIGHT} cy="200" r={R - 22} />
+        </g>
+      )}
+
+      {/* main outline */}
+      <g stroke={`url(#${baseId})`} strokeWidth={strokeWidth}>
+        <circle cx={LEFT} cy="200" r={R} />
+        <circle cx={RIGHT} cy="200" r={R} />
+      </g>
+
+      {/* light sweep across the outline */}
+      {animated && (
+        <g stroke={`url(#${shineId})`} strokeWidth={strokeWidth + 0.5}>
+          <circle cx={LEFT} cy="200" r={R} />
+          <circle cx={RIGHT} cy="200" r={R} />
+        </g>
+      )}
+
+      {/* connection pulse */}
+      {animated && (
+        <circle
+          cx="200"
+          cy="200"
+          r="7"
+          fill="none"
+          strokeWidth="2"
+          style={{ stroke: "var(--a)" }}
+        >
+          <animate
+            attributeName="r"
+            values="7;54"
+            dur="2.8s"
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values="0.9;0"
+            dur="2.8s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      )}
+
+      <circle cx="200" cy="200" r="16" style={{ fill: "var(--a)" }} opacity="0.2" />
+      <circle cx="200" cy="200" r="7" fill="#fff" />
+
+      {/* two sparks, one orbiting each ring */}
+      {animated && (
+        <>
+          <g>
+            <circle
+              cx={LEFT + R}
+              cy="200"
+              r="9"
+              style={{ fill: "var(--a)" }}
+              opacity="0.25"
+            />
+            <circle cx={LEFT + R} cy="200" r="4.5" fill="#fff" />
+            <animateTransform
+              attributeName="transform"
+              type="rotate"
+              from={`0 ${LEFT} 200`}
+              to={`360 ${LEFT} 200`}
+              dur="10s"
+              repeatCount="indefinite"
+            />
+          </g>
+
+          <g>
+            <circle
+              cx={RIGHT - R}
+              cy="200"
+              r="9"
+              style={{ fill: "var(--b)" }}
+              opacity="0.25"
+            />
+            <circle cx={RIGHT - R} cy="200" r="4.5" fill="#fff" />
+            <animateTransform
+              attributeName="transform"
+              type="rotate"
+              from={`360 ${RIGHT} 200`}
+              to={`0 ${RIGHT} 200`}
+              dur="12s"
+              repeatCount="indefinite"
+            />
+          </g>
+        </>
+      )}
+    </svg>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Page                                                               */
+/* ------------------------------------------------------------------ */
+
 export default function Landing() {
   const navigate = useNavigate();
   const { state } = useLocation();
+  const reducedMotion = usePrefersReducedMotion();
+  const rootRef = useRef(null);
 
   const [name, setName] = useState(() => getDisplayName());
   const [interests, setInterests] = useState("");
+  const [interestsOpen, setInterestsOpen] = useState(false);
   const [premiumCode, setPremiumCode] = useState("");
   const [recoveryCode, setRecoveryCode] = useState("");
   const [premiumMessage, setPremiumMessage] = useState("");
@@ -68,7 +364,7 @@ export default function Landing() {
   const [agreedRules, setAgreedRules] = useState(false);
 
   const [waitingCount, setWaitingCount] = useState(null);
-  const [taglineIndex, setTaglineIndex] = useState(0);
+  const [slideIndex, setSlideIndex] = useState(0);
 
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [staffAccessOpen, setStaffAccessOpen] = useState(false);
@@ -76,10 +372,13 @@ export default function Landing() {
   const closeOptions = useCallback(() => setOptionsOpen(false), []);
   const closeStaff = useCallback(() => setStaffAccessOpen(false), []);
 
+  const slide = SLIDES[slideIndex % SLIDES.length];
+
   const trimmedName = name.trim();
   const confirmed = ageConfirmed && agreedRules;
   const canEnter = trimmedName.length > 0 && confirmed && !premiumBusy;
   const hasCode = premiumCode.trim().length > 0 || recoveryCode.trim().length > 0;
+  const showInterests = interestsOpen || interests.length > 0;
   const premiumIsError =
     premiumMessage.length > 0 &&
     !premiumMessage.startsWith("Premium activated") &&
@@ -120,13 +419,39 @@ export default function Landing() {
     }
   }, [navigate, state?.returnTo]);
 
+  // Rotate tagline + accent colours together.
   useEffect(() => {
+    if (reducedMotion) return undefined;
+
     const interval = window.setInterval(() => {
-      setTaglineIndex((index) => (index + 1) % TAGLINES.length);
-    }, 3200);
+      setSlideIndex((index) => (index + 1) % SLIDES.length);
+    }, 4200);
 
     return () => window.clearInterval(interval);
-  }, []);
+  }, [reducedMotion]);
+
+  // Gentle logo parallax on desktop (mouse only, skipped for reduced motion).
+  useEffect(() => {
+    if (reducedMotion) return undefined;
+
+    const element = rootRef.current;
+
+    if (!element || !window.matchMedia("(pointer: fine)").matches) {
+      return undefined;
+    }
+
+    function onMove(event) {
+      const x = (event.clientX / window.innerWidth - 0.5) * 2;
+      const y = (event.clientY / window.innerHeight - 0.5) * 2;
+
+      element.style.setProperty("--px", x.toFixed(3));
+      element.style.setProperty("--py", y.toFixed(3));
+    }
+
+    window.addEventListener("pointermove", onMove, { passive: true });
+
+    return () => window.removeEventListener("pointermove", onMove);
+  }, [reducedMotion]);
 
   useEffect(() => {
     let mounted = true;
@@ -230,48 +555,60 @@ export default function Landing() {
     setInterests([...current, value].slice(0, 5).join(", "));
   }
 
+  const liveLabel =
+    waitingCount !== null && waitingCount > 0
+      ? `${waitingCount} waiting`
+      : "live";
+
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-[#050816] text-white">
-      {/* Atmospheric background */}
+    <div
+      ref={rootRef}
+      className="rc-root relative min-h-screen overflow-x-hidden bg-[#050816] text-white"
+      style={{ "--a": slide.a, "--b": slide.b }}
+    >
+      {/* Background: two soft glows that follow the live accent colours */}
       <div
         aria-hidden="true"
         className="pointer-events-none fixed inset-0 overflow-hidden"
       >
-        <div className="absolute -left-40 -top-40 h-[32rem] w-[32rem] rounded-full bg-cyan-400/10 blur-[120px]" />
-
-        <div className="absolute right-[-10rem] top-[15%] h-[30rem] w-[30rem] rounded-full bg-violet-500/10 blur-[120px]" />
-
-        <div className="absolute bottom-[-12rem] left-[30%] h-[28rem] w-[28rem] rounded-full bg-cyan-500/5 blur-[120px]" />
-
-        <div className="absolute inset-0 opacity-[0.035] [background-image:linear-gradient(rgba(255,255,255,.6)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.6)_1px,transparent_1px)] [background-size:64px_64px]" />
-
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_25%,#050816_90%)]" />
+        <div className="rc-glow-a absolute -left-48 -top-48 h-[44rem] w-[44rem]" />
+        <div className="rc-glow-b absolute -right-56 top-[10%] h-[46rem] w-[46rem]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_35%,#050816_95%)]" />
       </div>
 
       {/*
         FIRST SCREEN
-        Exactly one viewport tall (dvh follows the mobile browser toolbar).
-        Header + hero + start card live here, so the name field, the checkboxes
-        and the button are all visible without scrolling.
+        One viewport tall (dvh follows the mobile browser toolbar).
+        Name field, both checkboxes and the button are visible without scrolling.
       */}
       <div
         className="relative z-10 flex min-h-screen flex-col"
         style={{ minHeight: "100dvh" }}
       >
+        {/* Phones and tablets: the logo sits big and faint behind the content */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-32 top-16 z-0 w-[26rem] opacity-25 lg:hidden"
+        >
+          <LogoMark className="h-auto w-full" animated={!reducedMotion} />
+        </div>
+
         {/* Navigation */}
         <header className="relative z-20 mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3 sm:px-8 sm:py-5 lg:px-10">
           <Link
             to="/"
-            className="group flex items-center gap-2"
+            className="flex items-center gap-2.5"
             aria-label="RandomConnect home"
           >
-            <span className="relative flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10">
-              <span className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(76,201,240,.9)]" />
-            </span>
+            <LogoMark
+              className="h-9 w-9"
+              animated={false}
+              detail={false}
+              strokeWidth={16}
+            />
 
-            <span className="text-lg font-bold tracking-[-0.04em] text-white">
-              random
-              <span className="text-cyan-300">connect</span>
+            <span className="rc-display text-xl font-bold tracking-[-0.04em] text-white">
+              random<span className="rc-accent">connect</span>
             </span>
           </Link>
 
@@ -293,310 +630,134 @@ export default function Landing() {
             </Link>
           </nav>
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="hidden items-center gap-2 rounded-full border border-emerald-400/15 bg-emerald-400/5 px-3 py-1.5 text-xs text-emerald-300 sm:flex">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.8)]" />
+          <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-1.5 text-xs text-emerald-300 sm:flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
               Private by default
             </div>
 
-            <button
-              type="button"
-              onClick={() => setStaffAccessOpen(true)}
-              className="min-h-[2.5rem] rounded-full px-3 text-xs text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
-            >
-              Staff
-            </button>
+            <div className="flex items-center gap-2 font-mono text-xs text-slate-300">
+              <span className="rc-dot h-2 w-2 rounded-full" />
+              {liveLabel}
+            </div>
           </div>
         </header>
 
-        {/*
-          Phones / tablets: hero fills the leftover space, card sits at the bottom
-          within thumb reach. Desktop (lg): two columns.
-        */}
-        <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-8 lg:grid lg:grid-cols-[1.05fr_.75fr] lg:items-center lg:gap-20 lg:px-10 lg:pb-16 lg:pt-6">
-          {/* Hero */}
-          <div className="flex flex-1 flex-col justify-center py-2 lg:block lg:max-w-3xl lg:py-0">
-            <div
-              className={`${ROOMY_INLINE_FLEX} mb-5 items-center gap-2 self-start rounded-full border border-cyan-300/15 bg-cyan-300/[0.05] px-3.5 py-2 text-xs text-cyan-200 lg:mb-6`}
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(76,201,240,.9)]" />
-              Real conversations · no profile required
-            </div>
-
-            <h1 className="max-w-3xl text-[2.25rem] font-bold leading-[1] tracking-[-0.055em] text-white sm:text-6xl lg:text-[5.7rem] lg:leading-[.98]">
-              Talk to
-              <br />
-
-              <span className="bg-gradient-to-r from-cyan-200 via-cyan-300 to-violet-300 bg-clip-text text-transparent">
+        <main className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center gap-4 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-8 lg:grid lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:items-center lg:gap-10 lg:px-10 lg:pb-14 xl:gap-16">
+          {/* Left: headline + entry, stacked like a classic sign-in page */}
+          <div className="flex flex-col gap-4 sm:gap-6">
+            <div>
+              <h1 className="rc-display text-[2.6rem] font-bold leading-[0.98] tracking-[-0.045em] text-white sm:text-6xl lg:text-[4.4rem] xl:text-[5rem]">
+                Talk to
+                <br />
                 someone new.
-              </span>
-            </h1>
+              </h1>
 
-            <div
-              key={taglineIndex}
-              className="mt-2 min-h-[1.5em] text-base font-medium tracking-[-0.01em] text-slate-300 animate-[landingFade_.55s_ease-out] sm:mt-4 sm:text-2xl lg:mt-6 lg:text-3xl"
-            >
-              {TAGLINES[taglineIndex]}
-            </div>
-
-            <p
-              className={`${ROOMY_BLOCK} mt-4 max-w-xl text-base leading-7 text-slate-400 lg:mt-6 lg:text-lg`}
-            >
-              Drop into a respectful conversation, share an interest,
-              and leave whenever you want. No profile to build and no
-              personal details needed.
-            </p>
-
-            {/* Trust row */}
-            <div
-              className={`${ROOMY_FLEX} mt-5 flex-wrap gap-2 lg:mt-8 lg:gap-2.5`}
-            >
-              <TrustPill icon="✦" text="No signup" />
-              <TrustPill icon="↗" text="Skip anytime" />
-              <TrustPill icon="◌" text="Camera starts off" />
-            </div>
-
-            {/* Waiting status */}
-            {waitingCount !== null && (
               <div
-                className={`${MID_INLINE_FLEX} mt-4 items-center gap-2.5 self-start rounded-full border border-white/10 bg-white/[0.025] px-3 py-1.5 text-xs text-slate-400 lg:mt-7 lg:px-4 lg:py-2.5 lg:text-sm`}
+                key={slideIndex}
+                className="rc-accent mt-2 min-h-[1.5em] text-lg font-medium animate-[rcFade_.5s_ease-out] sm:mt-4 sm:text-2xl"
               >
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-300 opacity-60" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
-                </span>
-
-                {waitingCount > 0
-                  ? `${waitingCount} ${
-                      waitingCount === 1 ? "person is" : "people are"
-                    } looking for a conversation`
-                  : "Be the first conversation waiting"}
-              </div>
-            )}
-
-            {/* Product preview (desktop only, keeps small screens to one view) */}
-            <div className="relative mt-12 hidden max-w-xl lg:block">
-              <div className="absolute -inset-5 rounded-[2rem] bg-cyan-400/5 blur-3xl" />
-
-              <div className="relative flex items-center gap-4 rounded-3xl border border-white/10 bg-white/[0.035] p-4 shadow-2xl shadow-black/30 backdrop-blur-xl">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-300 to-blue-500 text-lg font-bold text-[#031018]">
-                  A
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-white">
-                      Someone is ready to talk
-                    </span>
-
-                    <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
-                      live
-                    </span>
-                  </div>
-
-                  <p className="mt-1 truncate text-sm text-slate-500">
-                    Music · Travel · Movies
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-cyan-300/15 bg-cyan-300/5 px-4 py-2 text-xs font-medium text-cyan-200">
-                  Connecting
-                </div>
-              </div>
-
-              <div className="absolute -bottom-7 -right-3 rounded-2xl border border-violet-300/15 bg-[#0b1022]/95 p-3 shadow-xl shadow-black/40 backdrop-blur-xl">
-                <div className="flex items-center gap-3">
-                  <div className="flex -space-x-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#0b1022] bg-cyan-300 text-xs font-bold text-[#031018]">
-                      J
-                    </div>
-
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#0b1022] bg-violet-300 text-xs font-bold text-[#120c22]">
-                      M
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-semibold text-white">
-                      Group room
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      people are talking
-                    </p>
-                  </div>
-                </div>
+                {slide.tagline}
               </div>
             </div>
 
-            <div className="mt-10 hidden lg:block">
-              <PulseConnector label="A conversation is waiting" />
-            </div>
-          </div>
+            {/* Start card */}
+            <section id="start-talking" className="w-full max-w-md">
+              <div className="rc-panel rounded-[1.75rem] p-4 sm:p-6">
+                <h2
+                  className={`${ROOMY_BLOCK} rc-display mb-4 text-xl font-bold tracking-[-0.03em] text-white`}
+                >
+                  Pick a name and go.
+                </h2>
 
-          {/* Start card */}
-          <section
-            id="start-talking"
-            className="mx-auto w-full max-w-md lg:mx-0 lg:max-w-none lg:justify-self-end"
-          >
-            <div className="relative">
-              <div className="absolute -inset-4 rounded-[2rem] bg-cyan-400/5 blur-3xl lg:-inset-6" />
-
-              <div className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0a1020]/90 shadow-2xl shadow-black/50 backdrop-blur-2xl lg:rounded-[2rem]">
-                {/* Card header: one slim line on phones, full header on desktop */}
-                <div className="px-4 pt-4 lg:border-b lg:border-white/[0.07] lg:px-7 lg:py-6">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p
-                        className={`${ROOMY_BLOCK} text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300`}
-                      >
-                        Start here
-                      </p>
-
-                      <h2 className="text-xl font-bold tracking-[-0.035em] text-white lg:mt-2 lg:text-2xl">
-                        Start talking
-                      </h2>
-
-                      <p
-                        className={`${ROOMY_BLOCK} mt-1 text-sm text-slate-500 lg:mt-1.5`}
-                      >
-                        Choose a name and you're ready.
-                      </p>
-                    </div>
-
-                    <div className="hidden h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] lg:flex">
-                      <span className="text-lg">↗</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3 px-4 pb-4 pt-3 lg:space-y-5 lg:p-7">
-                  {/* Name */}
-                  <div>
-                    <label
-                      htmlFor="display-name"
-                      className="sr-only mb-0 block text-sm font-medium text-slate-300 lg:not-sr-only lg:mb-2"
+                <div className="space-y-3">
+                  {/* Name: floating label, like the X sign-in field */}
+                  <div className="rc-field relative rounded-2xl">
+                    <span
+                      aria-hidden="true"
+                      className="absolute left-2.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl text-sm font-bold text-[#06101a] transition-colors"
+                      style={{
+                        backgroundColor: trimmedName
+                          ? colorForName(trimmedName)
+                          : "rgba(255,255,255,.1)",
+                      }}
                     >
-                      Display name
-                    </label>
-
-                    <div className="relative">
-                      <span
-                        aria-hidden="true"
-                        className="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-xl text-sm font-bold text-[#06101a] lg:left-3.5 lg:h-9 lg:w-9"
-                        style={{
-                          backgroundColor: trimmedName
-                            ? colorForName(trimmedName)
-                            : "rgba(255,255,255,.08)",
-                        }}
-                      >
-                        {trimmedName
-                          ? trimmedName.charAt(0).toUpperCase()
-                          : "?"}
-                      </span>
-
-                      <input
-                        id="display-name"
-                        value={name}
-                        onChange={(event) => setName(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            enter();
-                          }
-                        }}
-                        placeholder="What should people call you?"
-                        maxLength={30}
-                        autoComplete="nickname"
-                        enterKeyHint="go"
-                        className="h-12 w-full rounded-2xl border border-white/10 bg-black/20 pl-12 pr-4 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/50 focus:bg-cyan-300/[0.025] focus:ring-4 focus:ring-cyan-300/5 lg:h-14 lg:pl-16"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Interests */}
-                  <div>
-                    <label
-                      htmlFor="interests"
-                      className="sr-only mb-0 block text-sm font-medium text-slate-300 lg:not-sr-only lg:mb-2"
-                    >
-                      Interests
-                      <span className="ml-1 font-normal text-slate-600">
-                        optional
-                      </span>
-                    </label>
+                      {trimmedName ? trimmedName.charAt(0).toUpperCase() : "?"}
+                    </span>
 
                     <input
-                      id="interests"
-                      value={interests}
-                      onChange={(event) =>
-                        setInterests(event.target.value)
-                      }
+                      id="display-name"
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           enter();
                         }
                       }}
-                      placeholder="Interests (optional): music, travel..."
+                      placeholder=" "
+                      maxLength={30}
+                      autoComplete="nickname"
                       enterKeyHint="go"
-                      className="h-12 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/50 focus:bg-cyan-300/[0.025] focus:ring-4 focus:ring-cyan-300/5 lg:h-14"
+                      className="peer h-14 w-full rounded-2xl bg-transparent pl-14 pr-4 pt-4 text-base text-white outline-none"
                     />
 
-                    <div
-                      className={`${ROOMY_FLEX} mt-2 flex-wrap gap-2 lg:mt-2.5`}
+                    <label
+                      htmlFor="display-name"
+                      className="pointer-events-none absolute left-14 top-2 text-[11px] font-medium text-slate-500 transition-all duration-150 peer-placeholder-shown:top-4 peer-placeholder-shown:text-base peer-focus:top-2 peer-focus:text-[11px] peer-focus:text-[color:var(--a)]"
                     >
-                      {["Music", "Travel", "Movies", "Gaming"].map(
-                        (interest) => (
-                          <button
-                            key={interest}
-                            type="button"
-                            onClick={() =>
-                              addInterest(interest.toLowerCase())
-                            }
-                            className="rounded-full border border-white/10 bg-white/[0.025] px-3 py-1.5 text-xs text-slate-500 transition hover:border-cyan-300/20 hover:bg-cyan-300/5 hover:text-cyan-200"
-                          >
-                            + {interest}
-                          </button>
-                        ),
-                      )}
-                    </div>
+                      What should people call you?
+                    </label>
                   </div>
 
-                  {/* Options (opens a sheet so the page never grows or jumps) */}
-                  <button
-                    type="button"
-                    aria-haspopup="dialog"
-                    onClick={() => setOptionsOpen(true)}
-                    className="flex min-h-[2.75rem] w-full items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-2.5 text-left transition hover:border-white/15 hover:bg-white/[0.04] lg:py-3.5"
-                  >
-                    <span>
-                      <span className="block text-sm font-medium text-slate-300">
-                        Options & privacy
-                      </span>
+                  {/* Interests (optional, tucked away until wanted) */}
+                  {showInterests ? (
+                    <div>
+                      <div className="rc-field rounded-2xl">
+                        <input
+                          id="interests"
+                          value={interests}
+                          onChange={(event) => setInterests(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              enter();
+                            }
+                          }}
+                          aria-label="Interests, optional"
+                          placeholder="Interests (optional): music, travel..."
+                          enterKeyHint="go"
+                          className="h-12 w-full rounded-2xl bg-transparent px-4 text-base text-white outline-none placeholder:text-slate-500"
+                        />
+                      </div>
 
-                      <span
-                        className={`${ROOMY_BLOCK} mt-0.5 text-xs text-slate-600`}
-                      >
-                        Premium, recovery, music and local data
-                      </span>
-                    </span>
-
-                    <span className="flex shrink-0 items-center gap-2 text-slate-500">
-                      {hasCode && (
-                        <span className="text-[11px] font-medium text-emerald-300">
-                          Code added
-                        </span>
-                      )}
-
-                      <span
-                        aria-hidden="true"
-                        className="text-lg leading-none"
-                      >
-                        ›
-                      </span>
-                    </span>
-                  </button>
+                      <div className={`${ROOMY_FLEX} mt-2 flex-wrap gap-2`}>
+                        {["Music", "Travel", "Movies", "Gaming"].map(
+                          (interest) => (
+                            <button
+                              key={interest}
+                              type="button"
+                              onClick={() => addInterest(interest.toLowerCase())}
+                              className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-400 transition hover:border-white/30 hover:text-white"
+                            >
+                              + {interest}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setInterestsOpen(true)}
+                      className="inline-flex items-center gap-2 text-sm text-slate-400 transition hover:text-white"
+                    >
+                      <span className="rc-accent text-base leading-none">+</span>
+                      Add interests
+                      <span className="text-slate-600">optional</span>
+                    </button>
+                  )}
 
                   {/* Confirmations */}
-                  <div className="space-y-2.5 lg:space-y-3">
+                  <div className="space-y-2.5 pt-1">
                     <label className="flex cursor-pointer items-start gap-3 text-xs leading-snug text-slate-400 lg:text-sm lg:leading-5">
                       <input
                         type="checkbox"
@@ -604,12 +765,11 @@ export default function Landing() {
                         onChange={(event) =>
                           setAgeConfirmed(event.target.checked)
                         }
-                        className="mt-px h-[18px] w-[18px] shrink-0 accent-cyan-400 lg:mt-0.5"
+                        className="mt-px h-[18px] w-[18px] shrink-0 lg:mt-0.5"
+                        style={{ accentColor: "var(--a)" }}
                       />
 
-                      <span>
-                        I confirm I am 18 years of age or older.
-                      </span>
+                      <span>I confirm I am 18 years of age or older.</span>
                     </label>
 
                     <label className="flex cursor-pointer items-start gap-3 text-xs leading-snug text-slate-400 lg:text-sm lg:leading-5">
@@ -619,132 +779,216 @@ export default function Landing() {
                         onChange={(event) =>
                           setAgreedRules(event.target.checked)
                         }
-                        className="mt-px h-[18px] w-[18px] shrink-0 accent-cyan-400 lg:mt-0.5"
+                        className="mt-px h-[18px] w-[18px] shrink-0 lg:mt-0.5"
+                        style={{ accentColor: "var(--a)" }}
                       />
 
                       <span>
-                        I agree not to share sexual content, harass
-                        others, or involve minors.
+                        I agree not to share sexual content, harass others, or
+                        involve minors.
                       </span>
                     </label>
                   </div>
 
-                  {/* CTA: the label tells people what is still missing */}
+                  {/* Main button: the label says what is still missing */}
                   <button
                     type="button"
                     onClick={enter}
                     disabled={!canEnter}
-                    className="group flex h-12 w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-300 to-blue-400 text-sm font-bold text-[#041019] shadow-[0_12px_40px_rgba(76,201,240,.16)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_50px_rgba(76,201,240,.24)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 lg:h-14"
+                    className="rc-btn group flex h-12 w-full items-center justify-center gap-2 rounded-full text-[0.95rem] font-bold transition duration-200 hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-not-allowed disabled:hover:translate-y-0 lg:h-14"
                   >
                     {ctaLabel}
 
                     {canEnter && (
-                      <span
-                        aria-hidden="true"
-                        className="transition-transform group-hover:translate-x-1"
-                      >
-                        →
-                      </span>
+                      <Icon
+                        name="arrow"
+                        className="h-4 w-4 transition-transform group-hover:translate-x-1"
+                      />
                     )}
                   </button>
 
                   {premiumIsError && (
-                    <p
-                      role="alert"
-                      className="text-center text-xs text-red-300"
-                    >
+                    <p role="alert" className="text-center text-xs text-red-300">
                       {premiumMessage}
                     </p>
                   )}
 
-                  <p
-                    className={`${ROOMY_BLOCK} text-center text-xs text-slate-600`}
+                  {/* "or" divider, same rhythm as the X page */}
+                  <div
+                    className={`${ROOMY_FLEX} items-center gap-3 text-xs text-slate-600`}
+                    aria-hidden="true"
                   >
-                    Leave whenever you want. You stay in control.
+                    <span className="h-px flex-1 bg-white/10" />
+                    or
+                    <span className="h-px flex-1 bg-white/10" />
+                  </div>
+
+                  {/* Secondary pill: premium, recovery, privacy */}
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    onClick={() => setOptionsOpen(true)}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-full border border-white/20 text-sm font-semibold text-slate-200 transition hover:bg-white/5"
+                  >
+                    <Icon name="sliders" className="h-4 w-4" />
+                    Premium, recovery & privacy
+                    {hasCode && (
+                      <span className="text-[11px] font-medium text-emerald-300">
+                        Code added
+                      </span>
+                    )}
+                  </button>
+
+                  <p
+                    className={`${ROOMY_BLOCK} text-center text-[11px] leading-4 text-slate-500`}
+                  >
+                    By continuing, you agree to our{" "}
+                    <Link to="/terms" className="text-slate-300 hover:text-white">
+                      Terms
+                    </Link>
+                    ,{" "}
+                    <Link to="/privacy" className="text-slate-300 hover:text-white">
+                      Privacy Policy
+                    </Link>{" "}
+                    and{" "}
+                    <Link to="/safety" className="text-slate-300 hover:text-white">
+                      Safety rules
+                    </Link>
+                    .
                   </p>
                 </div>
               </div>
+
+              {/* Trust row, always visible under the card */}
+              <ul className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-slate-400 sm:text-xs lg:justify-start">
+                <li className="flex items-center gap-1.5">
+                  <Icon name="lock" className="rc-accent h-3.5 w-3.5" />
+                  No signup
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <Icon name="camera" className="rc-accent h-3.5 w-3.5" />
+                  Camera starts off
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <Icon name="skip" className="rc-accent h-3.5 w-3.5" />
+                  Skip anytime
+                </li>
+              </ul>
+            </section>
+          </div>
+
+          {/* Right (desktop): the big shining logo, like the X page */}
+          <div className="relative hidden lg:block" aria-hidden="true">
+            <div className="rc-tilt relative mx-auto aspect-square w-full max-w-[38rem]">
+              <LogoMark className="h-full w-full" animated={!reducedMotion} />
+
+              <FloatChip className="left-[-4%] top-[12%]">
+                <span className="rc-dot h-2 w-2 rounded-full" />
+                {waitingCount !== null && waitingCount > 0
+                  ? `${waitingCount} ${
+                      waitingCount === 1 ? "person is" : "people are"
+                    } looking for a chat`
+                  : "Be the first one waiting"}
+              </FloatChip>
+
+              <FloatChip className="right-[-2%] top-[34%]">
+                <Icon name="camera" className="rc-accent h-4 w-4" />
+                Camera starts off
+              </FloatChip>
+
+              <FloatChip className="left-[2%] bottom-[14%]">
+                <Icon name="skip" className="rc-accent h-4 w-4" />
+                Skip anytime
+              </FloatChip>
+
+              <FloatChip className="right-[6%] bottom-[6%]">
+                <Icon name="flag" className="rc-accent h-4 w-4" />
+                Block and report
+              </FloatChip>
             </div>
-          </section>
+          </div>
         </main>
       </div>
 
       {/* BELOW THE FOLD */}
       <div className="relative z-10 mx-auto w-full max-w-7xl px-5 pb-16 sm:px-8 lg:px-10">
-        {/* Product features */}
-        <section className="border-t border-white/[0.06] py-14 sm:py-28">
-          <div className="mb-10 max-w-2xl sm:mb-12">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
-              Built for conversation
-            </p>
-
-            <h2 className="mt-4 text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
-              Simple enough to start.
-              <br />
-              <span className="text-slate-500">
-                Flexible enough to stay.
-              </span>
+        {/* Trust: a plain list, not a wall of cards */}
+        <section className="grid gap-8 border-t border-white/[0.07] py-16 sm:py-24 lg:grid-cols-[.8fr_1.2fr] lg:gap-16">
+          <div>
+            <h2 className="rc-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
+              Built so you can relax and talk.
             </h2>
+
+            <p className="mt-4 max-w-md text-slate-400">
+              You decide who you talk to, what you share, and when it ends.
+            </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <FeatureCard
-              number="01"
-              title="1-to-1 conversations"
-              description="Choose your preferences, add interests if you want, and start a conversation."
-              icon="↗"
+          <ul className="divide-y divide-white/[0.07] border-y border-white/[0.07]">
+            <TrustRow
+              icon="lock"
+              title="No signup"
+              text="No email or phone number needed. Your display name stays on this device."
             />
 
-            <FeatureCard
-              number="02"
-              title="Live group rooms"
-              description="Join rooms where people are already talking through voice and video."
-              icon="◉"
+            <TrustRow
+              icon="camera"
+              title="Camera starts off"
+              text="Nothing is shown until you decide to turn your camera on."
             />
 
-            <FeatureCard
-              number="03"
-              title="Stay in control"
-              description="Mute, skip, leave, block or report when you need to."
-              icon="⌁"
+            <TrustRow
+              icon="sliders"
+              title="You control every call"
+              text="Mute, skip, leave, block or report whenever you need to."
             />
-          </div>
+
+            <TrustRow
+              icon="shield"
+              title="18+ and clear rules"
+              text="Everyone confirms they're 18 or older and agrees not to share sexual content, harass others, or involve minors."
+            />
+          </ul>
         </section>
 
-        {/* Safety */}
-        <section className="grid gap-8 rounded-[2rem] border border-white/[0.07] bg-white/[0.025] p-6 sm:gap-10 sm:p-10 lg:grid-cols-[.8fr_1.2fr] lg:p-14">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
-              Safety first
-            </p>
+        {/* How it works: this one really is a sequence */}
+        <section className="pb-16 sm:pb-24">
+          <h2 className="rc-display max-w-2xl text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
+            Three steps to your first conversation.
+          </h2>
 
-            <h2 className="mt-4 text-3xl font-bold tracking-[-0.04em] text-white sm:text-4xl">
-              You decide when
-              <br />
-              the conversation ends.
-            </h2>
-          </div>
+          <ol className="relative mt-10 grid gap-8 md:grid-cols-3 md:gap-6">
+            <div
+              aria-hidden="true"
+              className="rc-line absolute left-4 right-4 top-4 hidden h-px opacity-40 md:block"
+            />
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <SafetyItem title="Leave anytime" />
-            <SafetyItem title="Mute when needed" />
-            <SafetyItem title="Block people" />
-            <SafetyItem title="Report problems" />
-          </div>
+            <Step
+              number="1"
+              title="Pick a name"
+              text="That's all you need. Add interests if you like."
+            />
+
+            <Step
+              number="2"
+              title="Talk one-to-one or join a room"
+              text="Get an instant private call, or drop into a group room where people are already talking."
+            />
+
+            <Step
+              number="3"
+              title="Leave whenever you want"
+              text="Skip, mute, block or report at any point. You stay in control."
+            />
+          </ol>
         </section>
 
         {/* FAQ preview */}
-        <section className="py-14 sm:py-28">
+        <section className="border-t border-white/[0.07] py-16 sm:py-24">
           <div className="mx-auto max-w-3xl">
-            <div className="text-center">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
-                FAQ
-              </p>
-
-              <h2 className="mt-4 text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
-                Questions before you start?
-              </h2>
-            </div>
+            <h2 className="rc-display text-center text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
+              Questions before you start?
+            </h2>
 
             <div className="mt-8 space-y-3 sm:mt-10">
               <FaqItem
@@ -771,57 +1015,52 @@ export default function Landing() {
             <div className="mt-8 text-center">
               <Link
                 to="/faq"
-                className="text-sm font-medium text-cyan-300 transition hover:text-white"
+                className="rc-accent text-sm font-medium transition hover:text-white"
               >
-                View all questions →
+                View all questions
               </Link>
             </div>
           </div>
         </section>
 
         {/* Final CTA */}
-        <section className="relative overflow-hidden rounded-[2rem] border border-cyan-300/10 bg-gradient-to-br from-cyan-300/[0.08] via-white/[0.025] to-violet-400/[0.08] px-6 py-14 text-center sm:px-10 sm:py-20">
-          <div className="absolute left-1/2 top-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-300/10 blur-[100px]" />
+        <section className="rc-panel flex flex-col items-center rounded-[2rem] px-6 py-14 text-center sm:px-10 sm:py-20">
+          <LogoMark className="h-24 w-24" animated={!reducedMotion} />
 
-          <div className="relative">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
-              Your next conversation
-            </p>
+          <h2 className="rc-display mx-auto mt-6 max-w-2xl text-4xl font-bold tracking-[-0.045em] text-white sm:text-6xl">
+            Ready to meet someone new?
+          </h2>
 
-            <h2 className="mx-auto mt-4 max-w-2xl text-4xl font-bold tracking-[-0.05em] text-white sm:text-6xl">
-              Ready to meet someone new?
-            </h2>
+          <p className="mx-auto mt-5 max-w-xl text-slate-400">
+            No profile to perfect. No endless setup. Just choose a name and
+            start talking.
+          </p>
 
-            <p className="mx-auto mt-5 max-w-xl text-slate-400">
-              No profile to perfect. No endless setup. Just choose a name
-              and start talking.
-            </p>
-
-            <button
-              type="button"
-              onClick={scrollToStart}
-              className="mt-8 h-12 rounded-2xl bg-white px-6 text-sm font-bold text-[#06101a] shadow-xl transition hover:-translate-y-0.5 hover:bg-cyan-50"
-            >
-              Start talking →
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={scrollToStart}
+            className="rc-btn mt-8 inline-flex h-12 items-center gap-2 rounded-full px-7 text-sm font-bold transition hover:-translate-y-0.5"
+          >
+            Start talking
+            <Icon name="arrow" className="h-4 w-4" />
+          </button>
         </section>
       </div>
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-white/[0.06]">
+      <footer className="relative z-10 border-t border-white/[0.07]">
         <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-8 sm:px-8 md:flex-row md:items-center md:justify-between lg:px-10">
           <div>
-            <div className="text-sm font-bold text-white">
-              random<span className="text-cyan-300">connect</span>
+            <div className="rc-display text-sm font-bold text-white">
+              random<span className="rc-accent">connect</span>
             </div>
 
-            <p className="mt-1 text-xs text-slate-600">
+            <p className="mt-1 text-xs text-slate-500">
               Talk freely. Leave whenever you want.
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-500">
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-400">
             <Link className="transition hover:text-white" to="/about">
               About
             </Link>
@@ -845,6 +1084,14 @@ export default function Landing() {
             <Link className="transition hover:text-white" to="/faq">
               FAQ
             </Link>
+
+            <button
+              type="button"
+              onClick={() => setStaffAccessOpen(true)}
+              className="text-slate-500 transition hover:text-white"
+            >
+              Staff access
+            </button>
           </div>
         </div>
       </footer>
@@ -865,26 +1112,126 @@ export default function Landing() {
       {staffAccessOpen && <StaffAccessModal onClose={closeStaff} />}
 
       <style>{`
-        @keyframes landingFade {
-          from {
-            opacity: 0;
-            transform: translateY(7px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+        @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap");
+
+        /* Registered so the accent colours can fade instead of snapping. */
+        @property --a {
+          syntax: "<color>";
+          inherits: true;
+          initial-value: #4CC9F0;
+        }
+
+        @property --b {
+          syntax: "<color>";
+          inherits: true;
+          initial-value: #9D8DF1;
+        }
+
+        .rc-root {
+          transition: --a 1.4s ease, --b 1.4s ease;
+        }
+
+        .rc-display {
+          font-family: "Space Grotesk", ui-sans-serif, system-ui, -apple-system,
+            "Segoe UI", Roboto, sans-serif;
+        }
+
+        .rc-accent { color: var(--a); }
+
+        .rc-dot {
+          background: var(--a);
+          box-shadow: 0 0 12px var(--a);
+        }
+
+        .rc-glow-a {
+          background: radial-gradient(closest-side,
+            color-mix(in srgb, var(--a) 15%, transparent), transparent);
+        }
+
+        .rc-glow-b {
+          background: radial-gradient(closest-side,
+            color-mix(in srgb, var(--b) 13%, transparent), transparent);
+        }
+
+        .rc-line {
+          background: linear-gradient(90deg, var(--a), var(--b));
+        }
+
+        .rc-btn {
+          color: #041019;
+          background-image: linear-gradient(100deg, var(--a), var(--b));
+          box-shadow: 0 14px 44px color-mix(in srgb, var(--a) 24%, transparent);
+        }
+
+        .rc-btn:hover:not(:disabled) {
+          box-shadow: 0 18px 56px color-mix(in srgb, var(--a) 34%, transparent);
+        }
+
+        .rc-btn:disabled {
+          color: #7c8aa5;
+          background-image: none;
+          background-color: rgba(255, 255, 255, 0.08);
+          box-shadow: none;
+        }
+
+        .rc-panel {
+          position: relative;
+          background: linear-gradient(180deg,
+            rgba(16, 26, 52, 0.82), rgba(9, 15, 32, 0.88));
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+          backdrop-filter: blur(18px);
+        }
+
+        .rc-panel::before {
+          content: "";
+          position: absolute;
+          inset: 0 28px auto 28px;
+          height: 1px;
+          background: linear-gradient(90deg,
+            transparent, var(--a), var(--b), transparent);
+          opacity: 0.7;
+        }
+
+        .rc-field {
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(0, 0, 0, 0.28);
+          transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .rc-field:focus-within {
+          border-color: color-mix(in srgb, var(--a) 75%, transparent);
+          box-shadow: 0 0 0 4px color-mix(in srgb, var(--a) 12%, transparent);
+        }
+
+        .rc-icon {
+          color: var(--a);
+          background: color-mix(in srgb, var(--a) 12%, transparent);
+          border: 1px solid color-mix(in srgb, var(--a) 26%, transparent);
+        }
+
+        .rc-tilt {
+          transform: perspective(1100px)
+            rotateY(calc(var(--px, 0) * 7deg))
+            rotateX(calc(var(--py, 0) * -7deg));
+          transition: transform 0.25s ease-out;
+        }
+
+        .rc-root a:focus-visible,
+        .rc-root button:focus-visible,
+        .rc-root input[type="checkbox"]:focus-visible {
+          outline: 2px solid var(--a);
+          outline-offset: 2px;
+        }
+
+        @keyframes rcFade {
+          from { opacity: 0; transform: translateY(7px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
         @keyframes landingSheetUp {
-          from {
-            opacity: 0;
-            transform: translateY(24px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { opacity: 0; transform: translateY(24px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -896,8 +1243,94 @@ export default function Landing() {
             transition-duration: 0.01ms !important;
             scroll-behavior: auto !important;
           }
+
+          .rc-tilt { transform: none !important; }
         }
       `}</style>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Small pieces                                                       */
+/* ------------------------------------------------------------------ */
+
+function FloatChip({ className = "", children }) {
+  return (
+    <div
+      className={`absolute hidden items-center gap-2 rounded-full border border-white/10 bg-[#0a1020]/85 px-3.5 py-2 text-xs text-slate-200 shadow-xl shadow-black/40 backdrop-blur-xl xl:flex ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function TrustRow({ icon, title, text }) {
+  return (
+    <li className="flex items-start gap-4 py-5 sm:gap-5 sm:py-6">
+      <span className="rc-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl">
+        <Icon name={icon} />
+      </span>
+
+      <div>
+        <h3 className="text-base font-semibold text-white sm:text-lg">
+          {title}
+        </h3>
+
+        <p className="mt-1 max-w-xl text-sm leading-6 text-slate-400">
+          {text}
+        </p>
+      </div>
+    </li>
+  );
+}
+
+function Step({ number, title, text }) {
+  return (
+    <li className="relative flex gap-4 md:block">
+      <span className="rc-icon relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#050816] text-sm font-bold">
+        {number}
+      </span>
+
+      <div className="md:mt-5">
+        <h3 className="text-lg font-semibold text-white">{title}</h3>
+
+        <p className="mt-2 max-w-sm text-sm leading-6 text-slate-400">
+          {text}
+        </p>
+      </div>
+    </li>
+  );
+}
+
+function FaqItem({ question, answer }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02]">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-5 px-5 py-5 text-left"
+      >
+        <span className="text-sm font-medium text-white">{question}</span>
+
+        <span
+          className={`shrink-0 text-slate-500 transition-transform ${
+            open ? "rotate-45" : ""
+          }`}
+          aria-hidden="true"
+        >
+          +
+        </span>
+      </button>
+
+      {open && (
+        <div className="border-t border-white/[0.06] px-5 pb-5 pt-4">
+          <p className="text-sm leading-6 text-slate-400">{answer}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -955,9 +1388,9 @@ function OptionsSheet({
           <div>
             <h2
               id="options-title"
-              className="text-lg font-bold tracking-[-0.03em] text-white"
+              className="rc-display text-lg font-bold tracking-[-0.03em] text-white"
             >
-              Options & privacy
+              Premium, recovery & privacy
             </h2>
 
             <p className="mt-0.5 text-xs text-slate-500">
@@ -968,7 +1401,7 @@ function OptionsSheet({
           <button
             type="button"
             onClick={onClose}
-            className="h-10 shrink-0 rounded-xl border border-white/10 px-4 text-sm font-medium text-slate-200 transition hover:bg-white/5"
+            className="h-10 shrink-0 rounded-full border border-white/15 px-4 text-sm font-medium text-slate-200 transition hover:bg-white/5"
           >
             Done
           </button>
@@ -977,7 +1410,7 @@ function OptionsSheet({
         <div className="space-y-4 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4">
           {/* Premium */}
           <div>
-            <p className="text-xs font-semibold text-violet-300">
+            <p className="rc-accent text-xs font-semibold">
               Premium / recovery
             </p>
 
@@ -994,7 +1427,7 @@ function OptionsSheet({
               autoCapitalize="characters"
               autoComplete="off"
               enterKeyHint="done"
-              className="mt-2 h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-base text-white outline-none placeholder:text-slate-600 focus:border-violet-300/40"
+              className="rc-field mt-2 h-12 w-full rounded-xl px-3 text-base text-white outline-none placeholder:text-slate-600"
             />
 
             <input
@@ -1010,7 +1443,7 @@ function OptionsSheet({
               autoCapitalize="characters"
               autoComplete="off"
               enterKeyHint="done"
-              className="mt-2 h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-base text-white outline-none placeholder:text-slate-600 focus:border-violet-300/40"
+              className="rc-field mt-2 h-12 w-full rounded-xl px-3 text-base text-white outline-none placeholder:text-slate-600"
             />
 
             {premiumMessage && (
@@ -1025,7 +1458,7 @@ function OptionsSheet({
           </div>
 
           {/* Music */}
-          <div className="rounded-xl border border-cyan-300/10 bg-cyan-300/[0.035] p-3">
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
             <p className="text-xs leading-5 text-slate-400">
               In group rooms, hosts can play a song preview or a YouTube
               link for everyone at once.
@@ -1038,7 +1471,7 @@ function OptionsSheet({
               Privacy
             </p>
 
-            <div className="space-y-2 text-xs text-slate-500">
+            <div className="space-y-2 text-xs text-slate-400">
               <p>✓ No email or phone number required</p>
               <p>✓ Your display name stays on this device</p>
               <p>✓ Camera stays off until you enable it</p>
@@ -1047,7 +1480,7 @@ function OptionsSheet({
             <button
               type="button"
               onClick={handleForget}
-              className="mt-3 text-xs text-cyan-300 underline underline-offset-4 transition hover:text-white"
+              className="rc-accent mt-3 text-xs underline underline-offset-4 transition hover:text-white"
             >
               Forget me on this device
             </button>
@@ -1060,91 +1493,6 @@ function OptionsSheet({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function TrustPill({ icon, text }) {
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.025] px-3.5 py-2 text-xs text-slate-400">
-      <span className="text-cyan-300" aria-hidden="true">
-        {icon}
-      </span>
-      {text}
-    </span>
-  );
-}
-
-function FeatureCard({ number, title, description, icon }) {
-  return (
-    <div className="group rounded-3xl border border-white/[0.07] bg-white/[0.025] p-6 transition duration-300 hover:-translate-y-1 hover:border-cyan-300/15 hover:bg-white/[0.04]">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-mono text-slate-600">
-          {number}
-        </span>
-
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-cyan-300">
-          {icon}
-        </span>
-      </div>
-
-      <h3 className="mt-8 text-lg font-semibold text-white sm:mt-10">
-        {title}
-      </h3>
-
-      <p className="mt-2 text-sm leading-6 text-slate-500">
-        {description}
-      </p>
-    </div>
-  );
-}
-
-function SafetyItem({ title }) {
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-black/10 p-4">
-      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-400/10 text-sm text-emerald-300">
-        ✓
-      </span>
-
-      <span className="text-sm font-medium text-slate-300">
-        {title}
-      </span>
-    </div>
-  );
-}
-
-function FaqItem({ question, answer }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02]">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between gap-5 px-5 py-5 text-left"
-      >
-        <span className="text-sm font-medium text-white">
-          {question}
-        </span>
-
-        <span
-          className={`shrink-0 text-slate-500 transition-transform ${
-            open ? "rotate-45" : ""
-          }`}
-          aria-hidden="true"
-        >
-          +
-        </span>
-      </button>
-
-      {open && (
-        <div className="border-t border-white/[0.06] px-5 pb-5 pt-4">
-          <p className="text-sm leading-6 text-slate-500">
-            {answer}
-          </p>
-        </div>
-      )}
     </div>
   );
 }
@@ -1187,9 +1535,7 @@ function StaffAccessModal({ onClose }) {
 
       navigate("/rooms");
     } catch (requestError) {
-      setError(
-        requestError?.message || "Unable to verify staff access.",
-      );
+      setError(requestError?.message || "Unable to verify staff access.");
     } finally {
       setBusy(false);
     }
@@ -1213,18 +1559,12 @@ function StaffAccessModal({ onClose }) {
       >
         <div className="border-b border-white/[0.07] px-5 py-5 sm:px-6 sm:py-6">
           <div className="flex items-start justify-between gap-5">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
-                Private access
-              </p>
-
-              <h2
-                id="staff-access-title"
-                className="mt-2 text-2xl font-bold tracking-[-0.035em] text-white"
-              >
-                Enter as staff
-              </h2>
-            </div>
+            <h2
+              id="staff-access-title"
+              className="rc-display text-2xl font-bold tracking-[-0.035em] text-white"
+            >
+              Enter as staff
+            </h2>
 
             <button
               type="button"
@@ -1236,9 +1576,9 @@ function StaffAccessModal({ onClose }) {
             </button>
           </div>
 
-          <p className="mt-3 text-sm leading-6 text-slate-500">
-            The server verifies your account, role, and registered
-            device before entry.
+          <p className="mt-3 text-sm leading-6 text-slate-400">
+            The server verifies your account, role, and registered device
+            before entry.
           </p>
         </div>
 
@@ -1250,16 +1590,18 @@ function StaffAccessModal({ onClose }) {
             Staff password
           </label>
 
-          <input
-            id="staff-password"
-            autoFocus
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
-            placeholder="Enter password"
-            className="h-12 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/40 focus:ring-4 focus:ring-cyan-300/5"
-          />
+          <div className="rc-field rounded-2xl">
+            <input
+              id="staff-password"
+              autoFocus
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              placeholder="Enter password"
+              className="h-12 w-full rounded-2xl bg-transparent px-4 text-base text-white outline-none placeholder:text-slate-600"
+            />
+          </div>
 
           {error && (
             <p
@@ -1273,7 +1615,7 @@ function StaffAccessModal({ onClose }) {
           <button
             type="submit"
             disabled={busy || !password}
-            className="mt-5 flex h-12 w-full items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-300 to-blue-400 px-4 text-sm font-bold text-[#041019] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rc-btn mt-5 flex h-12 w-full items-center justify-center rounded-full px-4 text-sm font-bold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:hover:translate-y-0"
           >
             {busy ? "Verifying..." : "Continue securely"}
           </button>
