@@ -41,22 +41,35 @@ export function sortByRolePriority(items, getRole = (item) => item?.role) {
  */
 const TIERS = {
   developer: {
-    label: "DEVELOPER",
-    icon: "sparkle",
-    frame: "vt-frame-developer",
-    framePad: "p-[2px]",
-    badge:
-      "border-white/30 bg-gradient-to-r from-cyan-400/45 via-violet-500/45 to-pink-500/45 text-white shadow-[0_0_18px_rgba(139,92,246,0.6)]",
-    glow: "from-cyan-400/35 via-violet-500/15 to-transparent",
-    avatar: "vt-ring-developer",
-    avatarGlow: "shadow-[0_0_55px_rgba(139,92,246,0.55)]",
-    nameBorder: "border-violet-300/30",
-    nameText:
-      "bg-gradient-to-r from-white via-cyan-100 to-violet-200 bg-clip-text text-transparent",
-    topLine: "via-cyan-200/80",
-    aurora: true,
-    sheen: true,
-  },
+  label: "DEVELOPER",
+  icon: "sparkle",
+  frame: "vt-frame-developer",
+  framePad: "p-[2px]",
+
+  badge:
+    "border-cyan-300/50 bg-gradient-to-r from-cyan-500/70 via-blue-600/70 to-violet-700/70 text-white font-black tracking-widest shadow-[0_0_30px_rgba(0,220,255,0.75),0_0_60px_rgba(124,58,237,0.55)]",
+
+  glow:
+    "from-cyan-400/60 via-blue-600/35 via-violet-600/30 to-transparent",
+
+  avatar:
+    "vt-ring-developer",
+
+  avatarGlow:
+    "shadow-[0_0_35px_rgba(0,220,255,0.9),0_0_80px_rgba(124,58,237,0.75),0_0_130px_rgba(236,72,153,0.35)]",
+
+  nameBorder:
+    "border-cyan-200/50",
+
+  nameText:
+    "bg-gradient-to-r from-white via-cyan-200 to-violet-300 bg-clip-text text-transparent font-black tracking-tight",
+
+  topLine:
+    "via-cyan-300",
+
+  aurora: true,
+  sheen: true,
+},
 
   admin: {
     label: "ADMIN",
