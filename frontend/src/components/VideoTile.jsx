@@ -168,6 +168,23 @@ const STYLES = `
   transition: box-shadow 0.3s ease;
 }
 
+/* Tiles respond to their OWN width, so a small tile in a 2-column phone
+   grid gets compact even though the screen is "wide enough". */
+.vt-frame {
+  container-type: inline-size;
+  container-name: vt;
+}
+
+@container vt (max-width: 259px) {
+  .vt-speaking-chip { display: none !important; }
+  .vt-wave-extra { display: none !important; }
+}
+
+@container vt (max-width: 199px) {
+  .vt-wave { display: none !important; }
+  .vt-name { font-size: 0.75rem; }
+}
+
 .vt-frame[data-speaking="true"] {
   box-shadow:
     0 0 0 1px rgba(103, 232, 249, 0.3),
@@ -821,12 +838,13 @@ export default function VideoTile({
         {/* BOTTOM NAME + AUDIO */}
         {/* ====================================================== */}
 
-        <div className="absolute inset-x-0 bottom-0 z-30 p-2.5 sm:p-3 md:p-4">
-          <div className="flex w-full flex-col items-stretch gap-2 sm:flex-row sm:items-end">
+        <div className="absolute inset-x-0 bottom-0 z-30 p-2 min-[420px]:p-2.5 sm:p-3 md:p-4">
+          {/* Same row on every screen size: name on the left, wave on the right */}
+          <div className="flex w-full items-end gap-2">
             {label && (
               <div className="min-w-0 flex-1">
                 <div
-                  className={`flex w-full min-w-0 max-w-full items-center gap-2.5 overflow-x-auto rounded-xl border bg-gradient-to-r from-black/80 via-black/65 to-black/35 px-3 py-2 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:w-fit sm:overflow-visible sm:px-3.5 sm:py-2.5 md:px-4 ${
+                  className={`flex w-fit min-w-0 max-w-full items-center gap-2 rounded-xl border bg-gradient-to-r from-black/80 via-black/65 to-black/35 px-2.5 py-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:gap-2.5 sm:px-3.5 sm:py-2.5 md:px-4 ${
                     isSpeaking
                       ? "border-cyan-300/35 shadow-[0_0_22px_rgba(34,211,238,0.12)]"
                       : tier.nameBorder
@@ -840,15 +858,17 @@ export default function VideoTile({
                     }`}
                   />
 
+                  {/* Phones: the full name, wrapping to 2 lines if it is long.
+                      sm and up: one line, exactly like desktop. */}
                   <span
-                    className={`min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-xs font-bold leading-tight tracking-[-0.01em] sm:flex-none sm:overflow-visible sm:truncate sm:text-base lg:text-lg ${tier.nameText}`}
+                    className={`vt-name min-w-0 break-words text-sm font-bold leading-tight tracking-[-0.01em] line-clamp-2 sm:line-clamp-1 sm:text-base lg:text-lg ${tier.nameText}`}
                     title={label}
                   >
                     {label}
                   </span>
 
                   {isSpeaking && (
-                    <span className="hidden shrink-0 rounded-full bg-cyan-300/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] text-cyan-200 sm:inline-flex sm:text-[9px]">
+                    <span className="vt-speaking-chip hidden shrink-0 rounded-full bg-cyan-300/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] text-cyan-200 min-[380px]:inline-flex sm:text-[9px]">
                       speaking
                     </span>
                   )}
@@ -856,9 +876,9 @@ export default function VideoTile({
               </div>
             )}
 
-            {/* AUDIO VISUALIZER */}
+            {/* AUDIO VISUALIZER: smaller and 6 bars on phones, full size from sm up */}
             <div
-              className={`flex h-9 shrink-0 items-center gap-[3px] rounded-xl border px-2.5 backdrop-blur-xl transition-all duration-300 sm:h-10 sm:px-3 ${
+              className={`vt-wave flex h-8 shrink-0 items-center gap-[2px] rounded-xl border px-2 backdrop-blur-xl transition-all duration-300 sm:h-10 sm:gap-[3px] sm:px-3 ${
                 isSpeaking
                   ? "border-cyan-300/30 bg-cyan-300/[0.09] shadow-[0_0_22px_rgba(34,211,238,0.18)]"
                   : "border-white/10 bg-black/55"
@@ -874,6 +894,8 @@ export default function VideoTile({
                 <span
                   key={index}
                   className={`w-[2px] rounded-full transition-all duration-75 sm:w-[3px] ${
+                    index >= 6 ? "vt-wave-extra hidden min-[380px]:block" : ""
+                  } ${
                     isSpeaking
                       ? "bg-gradient-to-t from-violet-400 via-cyan-300 to-white"
                       : "bg-white/20"
