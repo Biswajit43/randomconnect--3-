@@ -1357,10 +1357,15 @@ function DeleteRoomModal({ room, busy, onConfirm, onClose }) {
 /*  Mobile menu (slide-in drawer)                                      */
 /* ------------------------------------------------------------------ */
 
-const MENU_LINKS = [
+const MENU_MAIN_LINKS = [
   ["Profile", "/profile"],
   ["Guide", "/guide"],
   ["Pricing", "/pricing"],
+];
+
+// Secondary pages sit in a compact two-column grid so the whole menu,
+// including Log out, fits on short phone screens.
+const MENU_MORE_LINKS = [
   ["About", "/about"],
   ["FAQ", "/faq"],
   ["Safety", "/safety"],
@@ -1396,9 +1401,16 @@ function MobileMenu({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  /*
+    Why Log out was cut off: a fixed element sized with inset-0 can be taller
+    than the part of the screen you can actually see (mobile browser toolbars,
+    emulators). The drawer is now exactly 100dvh (the visible height), the links
+    scroll inside their own area, and the footer with Log out never scrolls away.
+  */
   return (
     <div
       className="fixed inset-0 z-[90] lg:hidden"
+      style={{ height: "100dvh" }}
       role="dialog"
       aria-modal="true"
       aria-label="Navigation menu"
@@ -1408,9 +1420,9 @@ function MobileMenu({
         onClick={onClose}
       />
 
-      <div className="absolute inset-y-0 right-0 flex w-[min(22rem,88vw)] flex-col border-l border-white/10 bg-panel shadow-2xl animate-[rmSlideIn_.22s_ease-out]">
+      <div className="absolute right-0 top-0 flex h-full w-[min(22rem,88vw)] flex-col overflow-hidden border-l border-white/10 bg-panel shadow-2xl animate-[rmSlideIn_.22s_ease-out]">
         {/* Account */}
-        <div className="flex items-start gap-3 border-b border-white/10 p-4">
+        <div className="flex shrink-0 items-start gap-3 border-b border-white/10 p-4">
           <Avatar name={name} size="lg" />
 
           <div className="min-w-0 flex-1">
@@ -1448,30 +1460,47 @@ function MobileMenu({
           </button>
         </div>
 
-        {/* Links */}
-        <nav className="grid flex-1 content-start gap-1 overflow-y-auto overscroll-contain p-3">
-          {MENU_LINKS.map(([label, path]) => (
-            <button
-              key={path}
-              type="button"
-              onClick={() => onNavigate(path)}
-              className="flex w-full items-center justify-between rounded-xl border border-transparent px-4 py-3 text-left text-sm font-medium text-mist transition hover:border-white/10 hover:bg-panel2 hover:text-white"
-            >
-              <span>{label}</span>
-              <span className="text-mist/50">→</span>
-            </button>
-          ))}
+        {/* Links: the only part that scrolls */}
+        <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
+          <div className="grid gap-1">
+            {MENU_MAIN_LINKS.map(([label, path]) => (
+              <button
+                key={path}
+                type="button"
+                onClick={() => onNavigate(path)}
+                className="flex w-full items-center justify-between rounded-xl border border-transparent px-4 py-2.5 text-left text-sm font-medium text-white/90 transition hover:border-white/10 hover:bg-panel2"
+              >
+                <span>{label}</span>
+                <span className="text-mist/50">→</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="my-3 h-px bg-white/10" />
+
+          <div className="grid grid-cols-2 gap-1.5">
+            {MENU_MORE_LINKS.map(([label, path]) => (
+              <button
+                key={path}
+                type="button"
+                onClick={() => onNavigate(path)}
+                className="rounded-lg border border-white/[0.06] px-3 py-2 text-left text-xs font-medium text-mist transition hover:border-white/15 hover:bg-panel2 hover:text-white"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </nav>
 
-        {/* Log out stays at the bottom, in thumb reach */}
-        <div className="border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {/* Log out: always pinned to the bottom of the visible screen */}
+        <div className="shrink-0 border-t border-white/10 bg-panel p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={onLogout}
-            className="flex w-full items-center justify-between rounded-xl border border-coral/20 bg-coral/5 px-4 py-3 text-left text-sm font-semibold text-coral transition hover:bg-coral/10"
+            className="flex w-full items-center justify-between rounded-xl border border-coral/30 bg-coral/10 px-4 py-3 text-left text-sm font-semibold text-coral transition hover:bg-coral/20"
           >
             <span>Log out</span>
-            <span>↗</span>
+            <span aria-hidden="true">↗</span>
           </button>
         </div>
       </div>

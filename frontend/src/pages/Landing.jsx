@@ -488,13 +488,13 @@ export default function Landing() {
       try {
         const result = recoveryCode.trim()
           ? await api.redeemPremiumRecovery(
-              recoveryCode.trim(),
-              getFingerprint(),
-            )
+            recoveryCode.trim(),
+            getFingerprint(),
+          )
           : await api.redeemPremium(
-              premiumCode.trim(),
-              getFingerprint(),
-            );
+            premiumCode.trim(),
+            getFingerprint(),
+          );
 
         if (result.token) {
           localStorage.setItem("rc_premium_token", result.token);
@@ -631,6 +631,14 @@ export default function Landing() {
           </nav>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setStaffAccessOpen(true)}
+              className="hidden text-xs text-slate-400 transition hover:text-white sm:block"
+            >
+              Staff access
+            </button>
+
             <div className="hidden items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-1.5 text-xs text-emerald-300 sm:flex">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
               Private by default
@@ -885,9 +893,8 @@ export default function Landing() {
               <FloatChip className="left-[-4%] top-[12%]">
                 <span className="rc-dot h-2 w-2 rounded-full" />
                 {waitingCount !== null && waitingCount > 0
-                  ? `${waitingCount} ${
-                      waitingCount === 1 ? "person is" : "people are"
-                    } looking for a chat`
+                  ? `${waitingCount} ${waitingCount === 1 ? "person is" : "people are"
+                  } looking for a chat`
                   : "Be the first one waiting"}
               </FloatChip>
 
@@ -1317,9 +1324,8 @@ function FaqItem({ question, answer }) {
         <span className="text-sm font-medium text-white">{question}</span>
 
         <span
-          className={`shrink-0 text-slate-500 transition-transform ${
-            open ? "rotate-45" : ""
-          }`}
+          className={`shrink-0 text-slate-500 transition-transform ${open ? "rotate-45" : ""
+            }`}
           aria-hidden="true"
         >
           +
@@ -1448,9 +1454,8 @@ function OptionsSheet({
 
             {premiumMessage && (
               <p
-                className={`mt-2 text-xs ${
-                  premiumIsError ? "text-red-300" : "text-emerald-300"
-                }`}
+                className={`mt-2 text-xs ${premiumIsError ? "text-red-300" : "text-emerald-300"
+                  }`}
               >
                 {premiumMessage}
               </p>
