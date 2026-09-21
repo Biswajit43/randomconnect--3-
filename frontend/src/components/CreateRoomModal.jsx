@@ -62,7 +62,7 @@ export default function CreateRoomModal({ open, onClose, onCreate, creating }) {
               onChange={(e) => setMaxParticipants(Number(e.target.value))}
               className="w-full bg-panel2 rounded-lg px-3 py-2 text-sm text-white outline-none focus-visible:outline-signal h-[38px]"
             >
-              {[4, 6, 8, 10, 12].map((n) => (
+              {[2, 4, 6, 8, 10, 12].map((n) => (
                 <option key={n} value={n}>{n} people</option>
               ))}
             </select>
