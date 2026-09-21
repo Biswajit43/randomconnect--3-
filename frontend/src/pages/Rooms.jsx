@@ -864,9 +864,9 @@ export default function Rooms() {
             setMenuOpen(false);
             setNameEditorOpen(true);
           }}
-          onLogout={() => {
+          onLogout={async () => {
             setMenuOpen(false);
-            setLogoutOpen(true);
+            await logout();
           }}
         />
       )}

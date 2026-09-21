@@ -634,7 +634,7 @@ export default function Landing() {
             <button
               type="button"
               onClick={() => setStaffAccessOpen(true)}
-              className="hidden text-xs text-slate-400 transition hover:text-white sm:block"
+              className="text-xs text-slate-400 transition hover:text-white"
             >
               Staff access
             </button>
