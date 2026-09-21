@@ -841,14 +841,14 @@ export default function VideoTile({
                   />
 
                   <span
-                    className={`shrink-0 whitespace-nowrap text-xs font-bold leading-tight tracking-[-0.01em] sm:min-w-0 sm:truncate sm:text-base lg:text-lg ${tier.nameText}`}
+                    className={`min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-xs font-bold leading-tight tracking-[-0.01em] sm:flex-none sm:overflow-visible sm:truncate sm:text-base lg:text-lg ${tier.nameText}`}
                     title={label}
                   >
                     {label}
                   </span>
 
                   {isSpeaking && (
-                    <span className="shrink-0 rounded-full bg-cyan-300/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] text-cyan-200 sm:text-[9px]">
+                    <span className="hidden shrink-0 rounded-full bg-cyan-300/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] text-cyan-200 sm:inline-flex sm:text-[9px]">
                       speaking
                     </span>
                   )}
