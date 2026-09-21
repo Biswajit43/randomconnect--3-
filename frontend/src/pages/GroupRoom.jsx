@@ -7,6 +7,7 @@ import VideoTile from "../components/VideoTile.jsx";
 import { MusicPlayerBoundary } from "../components/MusicPlayer.jsx";
 import ReportModal from "../components/ReportModal.jsx";
 import QuickGamePanel from "../components/QuickGamePanel.jsx";
+import { Flag, EllipsisVertical } from "lucide-react";
 
 const CONVERSATION_SPARKS = [
   "What is something you could talk about for hours?",
@@ -461,7 +462,7 @@ export default function GroupRoom() {
             <div className="relative">
               {/* Local Stream - We keep this one muted naturally so you don't hear yourself */}
               <VideoTile stream={localStream} muted mirrored label={displayName.current} avatarUrl={getAvatarUrl()} role={role} />
-              {isModerator && <span className="absolute top-3 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{role === "premium" ? "MUSIC MOD" : "HOST / MOD"}</span>}
+              {isModerator && <span className="absolute top-3 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{role === "premium" ? "MUSIC MOD" : "HOST"}</span>}
             </div>
 
             {visiblePeers.map((peer) => (
@@ -474,12 +475,59 @@ export default function GroupRoom() {
                 <VideoTile stream={remoteStreams[peer.socketId]} muted label={peer.displayName || "Guest"} avatarUrl={peer.avatarUrl} role={peer.role || "user"} />
                 <RemoteAudioPlayer stream={remoteStreams[peer.socketId]} peerId={peer.socketId} />
 
-                {peer.isModerator && <span className="absolute top-11 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{peer.role === "premium" ? "MUSIC MOD" : "HOST / MOD"}</span>}
-                {!['admin', 'developer'].includes(peer.role || 'user') && <button onClick={() => setReportTargetId(peer.socketId)} className="ui-button ui-button-danger absolute right-2 top-2 z-10 min-h-9 px-2.5 text-[11px] font-medium backdrop-blur">Report</button>}
-                {mutedPeers.has(peer.socketId) && <span className="absolute top-20 left-2 z-10 text-[11px] px-2 py-1 rounded-md bg-black/60 text-coral backdrop-blur">muted</span>}
-                {isModerator && peer.role !== "developer" && (role === "developer" || !peer.isModerator || (role === "admin" && ["user", "premium"].includes(peer.role || "user"))) && (
-                  <ModMenu isDeveloper={role === "developer"} isAdmin={role === "admin"} isPremium={role === "premium"} isModerator={peer.isModerator} targetRole={peer.role || "user"} isMuted={mutedPeers.has(peer.socketId)} onMute={() => mod("group:mod-mute", peer.socketId)} onUnmute={() => mod("group:mod-unmute", peer.socketId)} onWaiting={() => mod("group:mod-move-waiting", peer.socketId)} onRemove={() => { if (confirm("Remove this person from the room?")) mod("group:mod-remove", peer.socketId); }} onPromote={() => mod("group:mod-promote", peer.socketId)} onDemote={() => mod("group:mod-demote", peer.socketId)} />
+                {peer.isModerator && <span className="absolute top-11 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{peer.role === "premium" ? "MUSIC MOD" : "HOST"}</span>}
+
+                {!["admin", "developer"].includes(peer.role || "user") && (
+                  <button
+                    type="button"
+                    onClick={() => setReportTargetId(peer.socketId)}
+                    aria-label="Report user"
+                    title="Report"
+                    className="absolute right-12 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-md
+               border border-white/10
+               bg-black/60
+               text-white/70
+               backdrop-blur
+               transition-colors
+               hover:bg-coral/15
+               hover:text-coral
+               focus:outline-none
+               focus:ring-2
+               focus:ring-coral/40
+               touch-manipulation"
+                  >
+                    <Flag size={17} strokeWidth={2} />
+                  </button>
                 )}
+
+                {isModerator &&
+                  peer.role !== "developer" &&
+                  (
+                    role === "developer" ||
+                    !peer.isModerator ||
+                    (role === "admin" &&
+                      ["user", "premium"].includes(peer.role || "user"))
+                  ) && (
+                    <ModMenu
+                      isDeveloper={role === "developer"}
+                      isAdmin={role === "admin"}
+                      isPremium={role === "premium"}
+                      isModerator={peer.isModerator}
+                      targetRole={peer.role || "user"}
+                      isMuted={mutedPeers.has(peer.socketId)}
+                      onMute={() => mod("group:mod-mute", peer.socketId)}
+                      onUnmute={() => mod("group:mod-unmute", peer.socketId)}
+                      onWaiting={() => mod("group:mod-move-waiting", peer.socketId)}
+                      onRemove={() => {
+                        if (confirm("Remove this person from the room?")) {
+                          mod("group:mod-remove", peer.socketId);
+                        }
+                      }}
+                      onPromote={() => mod("group:mod-promote", peer.socketId)}
+                      onDemote={() => mod("group:mod-demote", peer.socketId)}
+                    />
+                  )}
+
               </div>
             ))}
           </div>
@@ -596,19 +644,43 @@ function ModMenu({ isDeveloper, isAdmin, isPremium, isModerator, targetRole, isM
   }, [open]);
   const canDemote = isModerator && (isDeveloper || (isAdmin && targetRole === "user"));
   const promoteAction = !isModerator && !isPremium ? [["Make moderator", onPromote]] : [];
+
   const items = isMuted ? [["Unmute", onUnmute], ["Waiting room", onWaiting], ...promoteAction, ...(canDemote ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]] : [["Mute mic", onMute], ["Waiting room", onWaiting], ...promoteAction, ...(canDemote ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]];
+
   return (
-    <div ref={menuRef} className="absolute top-2 right-2 z-40" data-menu-open={open}>
+    <div
+      ref={menuRef}
+      className="absolute top-2 right-2 z-40"
+      data-menu-open={open}
+    >
       <button
+        type="button"
         onClick={() => setOpen((current) => !current)}
-        className="text-xs px-3 py-2 min-h-[36px] rounded-md bg-black/70 text-signal2 hover:bg-signal/20 backdrop-blur touch-manipulation"
+        aria-label="Host actions"
+        aria-expanded={open}
+        className="flex h-9 w-9 items-center justify-center rounded-md
+                 bg-black/60 text-white/80
+                 border border-white/10
+                 backdrop-blur
+                 transition-colors
+                 hover:bg-white/10 hover:text-white
+                 focus:outline-none focus:ring-2 focus:ring-signal/50
+                 touch-manipulation"
       >
-        Host ···
+        <EllipsisVertical size={18} strokeWidth={2} />
       </button>
+
       {open && (
         <div className="absolute right-0 mt-1 w-44 bg-panel2 border border-white/10 rounded-lg overflow-hidden text-sm shadow-2xl z-50">
           {items.map(([label, action]) => (
-            <button key={label} onClick={() => { action(); setOpen(false); }} className="ui-button ui-button-quiet min-h-11 w-full justify-start rounded-none px-3 text-left text-white/90 touch-manipulation">
+            <button
+              key={label}
+              onClick={() => {
+                action();
+                setOpen(false);
+              }}
+              className="ui-button ui-button-quiet min-h-11 w-full justify-start rounded-none px-3 text-left text-white/90 touch-manipulation"
+            >
               {label}
             </button>
           ))}
@@ -616,6 +688,8 @@ function ModMenu({ isDeveloper, isAdmin, isPremium, isModerator, targetRole, isM
       )}
     </div>
   );
+
+
 }
 
 function EmptyState({ title, text, action, onAction }) {
