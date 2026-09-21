@@ -3,11 +3,10 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { socket, getDisplayName, getFingerprint, getPremiumToken, getAvatarUrl } from "../lib/socket.js";
 import { api } from "../lib/api.js";
 import { useGroupWebRTC } from "../hooks/useGroupWebRTC.js";
-import VideoTile from "../components/VideoTile.jsx";
+import VideoTile, { TileActionButton } from "../components/VideoTile.jsx";
 import { MusicPlayerBoundary } from "../components/MusicPlayer.jsx";
 import ReportModal from "../components/ReportModal.jsx";
 import QuickGamePanel from "../components/QuickGamePanel.jsx";
-import { Flag, EllipsisVertical } from "lucide-react";
 
 const CONVERSATION_SPARKS = [
   "What is something you could talk about for hours?",
@@ -472,61 +471,56 @@ export default function GroupRoom() {
                   This allows our custom RemoteAudioPlayer below to take full control 
                   of the audio stream, guaranteeing it works correctly on iOS Safari!
                 */}
-                <VideoTile stream={remoteStreams[peer.socketId]} muted label={peer.displayName || "Guest"} avatarUrl={peer.avatarUrl} role={peer.role || "user"} />
+                <VideoTile
+                  stream={remoteStreams[peer.socketId]}
+                  muted
+                  label={peer.displayName || "Guest"}
+                  avatarUrl={peer.avatarUrl}
+                  role={peer.role || "user"}
+                  actions={(
+                    <>
+                      {!['admin', 'developer'].includes(peer.role || 'user') && (
+                        <TileActionButton
+                          onClick={() => setReportTargetId(peer.socketId)}
+                          aria-label={`Report ${peer.displayName || "user"}`}
+                          title="Report user"
+                        >
+                          <FlagIcon />
+                          <span className="hidden sm:inline">Report</span>
+                        </TileActionButton>
+                      )}
+                      {isModerator &&
+                        peer.role !== "developer" &&
+                        (
+                          role === "developer" ||
+                          !peer.isModerator ||
+                          (role === "admin" && ["user", "premium"].includes(peer.role || "user"))
+                        ) && (
+                          <ModMenu
+                            isDeveloper={role === "developer"}
+                            isAdmin={role === "admin"}
+                            isPremium={role === "premium"}
+                            isModerator={peer.isModerator}
+                            targetRole={peer.role || "user"}
+                            isMuted={mutedPeers.has(peer.socketId)}
+                            onMute={() => mod("group:mod-mute", peer.socketId)}
+                            onUnmute={() => mod("group:mod-unmute", peer.socketId)}
+                            onWaiting={() => mod("group:mod-move-waiting", peer.socketId)}
+                            onRemove={() => {
+                              if (confirm("Remove this person from the room?")) {
+                                mod("group:mod-remove", peer.socketId);
+                              }
+                            }}
+                            onPromote={() => mod("group:mod-promote", peer.socketId)}
+                            onDemote={() => mod("group:mod-demote", peer.socketId)}
+                          />
+                        )}
+                    </>
+                  )}
+                />
                 <RemoteAudioPlayer stream={remoteStreams[peer.socketId]} peerId={peer.socketId} />
 
                 {peer.isModerator && <span className="absolute top-11 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{peer.role === "premium" ? "MUSIC MOD" : "HOST"}</span>}
-
-                {!["admin", "developer"].includes(peer.role || "user") && (
-                  <button
-                    type="button"
-                    onClick={() => setReportTargetId(peer.socketId)}
-                    aria-label="Report user"
-                    title="Report"
-                    className="absolute right-12 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-md
-               border border-white/10
-               bg-black/60
-               text-white/70
-               backdrop-blur
-               transition-colors
-               hover:bg-coral/15
-               hover:text-coral
-               focus:outline-none
-               focus:ring-2
-               focus:ring-coral/40
-               touch-manipulation"
-                  >
-                    <Flag size={17} strokeWidth={2} />
-                  </button>
-                )}
-
-                {isModerator &&
-                  peer.role !== "developer" &&
-                  (
-                    role === "developer" ||
-                    !peer.isModerator ||
-                    (role === "admin" &&
-                      ["user", "premium"].includes(peer.role || "user"))
-                  ) && (
-                    <ModMenu
-                      isDeveloper={role === "developer"}
-                      isAdmin={role === "admin"}
-                      isPremium={role === "premium"}
-                      isModerator={peer.isModerator}
-                      targetRole={peer.role || "user"}
-                      isMuted={mutedPeers.has(peer.socketId)}
-                      onMute={() => mod("group:mod-mute", peer.socketId)}
-                      onUnmute={() => mod("group:mod-unmute", peer.socketId)}
-                      onWaiting={() => mod("group:mod-move-waiting", peer.socketId)}
-                      onRemove={() => {
-                        if (confirm("Remove this person from the room?")) {
-                          mod("group:mod-remove", peer.socketId);
-                        }
-                      }}
-                      onPromote={() => mod("group:mod-promote", peer.socketId)}
-                      onDemote={() => mod("group:mod-demote", peer.socketId)}
-                    />
-                  )}
 
               </div>
             ))}
@@ -650,7 +644,7 @@ function ModMenu({ isDeveloper, isAdmin, isPremium, isModerator, targetRole, isM
   return (
     <div
       ref={menuRef}
-      className="absolute top-2 right-2 z-40"
+      className="relative z-40 shrink-0"
       data-menu-open={open}
     >
       <button
@@ -667,11 +661,11 @@ function ModMenu({ isDeveloper, isAdmin, isPremium, isModerator, targetRole, isM
                  focus:outline-none focus:ring-2 focus:ring-signal/50
                  touch-manipulation"
       >
-        <EllipsisVertical size={18} strokeWidth={2} />
+        <EllipsisIcon />
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-1 w-44 bg-panel2 border border-white/10 rounded-lg overflow-hidden text-sm shadow-2xl z-50">
+        <div className="absolute right-0 top-full mt-1 w-44 bg-panel2 border border-white/10 rounded-lg overflow-hidden text-sm shadow-2xl z-50">
           {items.map(([label, action]) => (
             <button
               key={label}
@@ -702,5 +696,24 @@ function EmptyState({ title, text, action, onAction }) {
         {action && <button onClick={onAction} className="ui-button ui-button-primary mt-6 px-5">{action}</button>}
       </div>
     </div>
+  );
+}
+
+function FlagIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 21V4" />
+      <path d="M5 4c5-3 9 3 14 0v10c-5 3-9-3-14 0" />
+    </svg>
+  );
+}
+
+function EllipsisIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="5" cy="12" r="1.5" />
+      <circle cx="12" cy="12" r="1.5" />
+      <circle cx="19" cy="12" r="1.5" />
+    </svg>
   );
 }
