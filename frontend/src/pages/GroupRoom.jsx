@@ -464,66 +464,113 @@ export default function GroupRoom() {
               {isModerator && <span className="absolute top-3 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{role === "premium" ? "MUSIC MOD" : "HOST"}</span>}
             </div>
 
-            {visiblePeers.map((peer) => (
-              <div key={peer.socketId} className="relative z-0 min-w-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[90]">
-                {/* 
-                  FIX: We explicitly mute the VideoTile for remote peers.
-                  This allows our custom RemoteAudioPlayer below to take full control 
-                  of the audio stream, guaranteeing it works correctly on iOS Safari!
-                */}
-                <VideoTile
-                  stream={remoteStreams[peer.socketId]}
-                  muted
-                  label={peer.displayName || "Guest"}
-                  avatarUrl={peer.avatarUrl}
-                  role={peer.role || "user"}
-                  actions={(
-                    <>
-                      {!['admin', 'developer'].includes(peer.role || 'user') && (
-                        <TileActionButton
-                          onClick={() => setReportTargetId(peer.socketId)}
-                          aria-label={`Report ${peer.displayName || "user"}`}
-                          title="Report user"
-                        >
-                          <FlagIcon />
-                          <span className="hidden sm:inline">Report</span>
-                        </TileActionButton>
-                      )}
-                      {isModerator &&
-                        peer.role !== "developer" &&
-                        (
-                          role === "developer" ||
-                          !peer.isModerator ||
-                          (role === "admin" && ["user", "premium"].includes(peer.role || "user"))
-                        ) && (
-                          <ModMenu
-                            isDeveloper={role === "developer"}
-                            isAdmin={role === "admin"}
-                            isPremium={role === "premium"}
-                            isModerator={peer.isModerator}
-                            targetRole={peer.role || "user"}
-                            isMuted={mutedPeers.has(peer.socketId)}
-                            onMute={() => mod("group:mod-mute", peer.socketId)}
-                            onUnmute={() => mod("group:mod-unmute", peer.socketId)}
-                            onWaiting={() => mod("group:mod-move-waiting", peer.socketId)}
-                            onRemove={() => {
-                              if (confirm("Remove this person from the room?")) {
-                                mod("group:mod-remove", peer.socketId);
-                              }
-                            }}
-                            onPromote={() => mod("group:mod-promote", peer.socketId)}
-                            onDemote={() => mod("group:mod-demote", peer.socketId)}
-                          />
-                        )}
-                    </>
+            {visiblePeers.map((peer) => {
+              const canManagePeer =
+                isModerator &&
+                peer.role !== "developer" &&
+                (
+                  role === "developer" ||
+                  !peer.isModerator ||
+                  (role === "admin" &&
+                    ["user", "premium"].includes(peer.role || "user"))
+                );
+
+              const canReport =
+                !["admin", "developer"].includes(peer.role || "user");
+
+              return (
+                <div
+                  key={peer.socketId}
+                  className="relative z-0 min-w-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[90]"
+                >
+                  <VideoTile
+                    stream={remoteStreams[peer.socketId]}
+                    muted
+                    label={peer.displayName || "Guest"}
+                    avatarUrl={peer.avatarUrl}
+                    role={peer.role || "user"}
+                  />
+
+                  {/* Top-right actions */}
+                  <div className="absolute top-2 right-2 z-30 flex items-center gap-1.5">
+                    {canReport && (
+                      <button
+                        type="button"
+                        onClick={() => setReportTargetId(peer.socketId)}
+                        aria-label={`Report ${peer.displayName || "user"}`}
+                        title="Report user"
+                        className="
+              flex h-9 w-9 shrink-0 items-center justify-center
+              rounded-md
+              border border-white/10
+              bg-black/70
+              text-white/75
+              shadow-lg
+              backdrop-blur-md
+              transition-all
+              hover:bg-coral/20
+              hover:text-coral
+              hover:border-coral/30
+              active:scale-95
+              focus:outline-none
+              focus:ring-2
+              focus:ring-coral/40
+              touch-manipulation
+            "
+                      >
+                        <FlagIcon />
+                      </button>
+                    )}
+
+                    {canManagePeer && (
+                      <ModMenu
+                        isDeveloper={role === "developer"}
+                        isAdmin={role === "admin"}
+                        isPremium={role === "premium"}
+                        isModerator={peer.isModerator}
+                        targetRole={peer.role || "user"}
+                        isMuted={mutedPeers.has(peer.socketId)}
+                        onMute={() => mod("group:mod-mute", peer.socketId)}
+                        onUnmute={() => mod("group:mod-unmute", peer.socketId)}
+                        onWaiting={() => mod("group:mod-move-waiting", peer.socketId)}
+                        onRemove={() => {
+                          if (confirm("Remove this person from the room?")) {
+                            mod("group:mod-remove", peer.socketId);
+                          }
+                        }}
+                        onPromote={() => mod("group:mod-promote", peer.socketId)}
+                        onDemote={() => mod("group:mod-demote", peer.socketId)}
+                      />
+                    )}
+                  </div>
+
+                  {/* Host badge */}
+                  {peer.isModerator && (
+                    <span
+                      className="
+            absolute top-11 right-3 z-10
+            rounded-md
+            border border-signal/30
+            bg-black/70
+            px-2 py-1
+            font-mono text-[10px]
+            font-bold tracking-wide
+            text-signal2
+            backdrop-blur
+          "
+                    >
+                      {peer.role === "premium" ? "MUSIC MOD" : "HOST"}
+                    </span>
                   )}
-                />
-                <RemoteAudioPlayer stream={remoteStreams[peer.socketId]} peerId={peer.socketId} />
 
-                {peer.isModerator && <span className="absolute top-11 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{peer.role === "premium" ? "MUSIC MOD" : "HOST"}</span>}
+                  <RemoteAudioPlayer
+                    stream={remoteStreams[peer.socketId]}
+                    peerId={peer.socketId}
+                  />
+                </div>
+              );
+            })}
 
-              </div>
-            ))}
           </div>
           <div id="room-controls" className="sticky bottom-0 z-50 pointer-events-auto flex flex-wrap items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
             <IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton>
