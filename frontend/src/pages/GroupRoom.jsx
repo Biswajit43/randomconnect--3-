@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { socket, getDisplayName, getFingerprint, getPremiumToken, getAvatarUrl } from "../lib/socket.js";
 import { api } from "../lib/api.js";
 import { useGroupWebRTC } from "../hooks/useGroupWebRTC.js";
-import VideoTile, { TileActionButton } from "../components/VideoTile.jsx";
+import VideoTile from "../components/VideoTile.jsx";
 import { MusicPlayerBoundary } from "../components/MusicPlayer.jsx";
 import ReportModal from "../components/ReportModal.jsx";
 import QuickGamePanel from "../components/QuickGamePanel.jsx";
@@ -16,9 +16,6 @@ const CONVERSATION_SPARKS = [
   "Teach the room one surprisingly useful fact.",
 ];
 
-// --- FIXED AUDIO CONSTRAINTS ---
-// This forces hardware-level echo cancellation and mono audio 
-// to save bandwidth and prevent the "infinite feedback loop"
 const VOICE_CONSTRAINTS = {
   echoCancellation: true,
   noiseSuppression: true,
@@ -28,7 +25,7 @@ const VOICE_CONSTRAINTS = {
   googEchoCancellation: true,
   googAutoGainControl: true,
   googNoiseSuppression: true,
-  googHighpassFilter: true
+  googHighpassFilter: true,
 };
 
 export default function GroupRoom() {
@@ -59,6 +56,7 @@ export default function GroupRoom() {
   const [unoHand, setUnoHand] = useState([]);
   const [reportTargetId, setReportTargetId] = useState(null);
   const [socketReady, setSocketReady] = useState(socket.connected);
+  const [identified, setIdentified] = useState(false);
   const chatScrollRef = useRef(null);
   const displayName = useRef(getDisplayName() || `Guest-${getFingerprint().slice(0, 4)}`);
   const [role, setRole] = useState(() => localStorage.getItem("rc_staff_role") || "user");
@@ -68,17 +66,24 @@ export default function GroupRoom() {
   const screenShareHandlerRef = useRef(null);
   const mediaRequested = useRef(false);
   const identifySent = useRef(false);
-  const { remoteStreams, connectionStates, connectToExistingPeer, setRoomId, closeAll, addVideoTrackToAllPeers, addTrackToAllPeers, removeTrackFromAllPeers, replaceVideoTrackForAllPeers } = useGroupWebRTC({ localStream });
+
+  const {
+    remoteStreams,
+    connectionStates,
+    closeAll,
+    addVideoTrackToAllPeers,
+    addTrackToAllPeers,
+    removeTrackFromAllPeers,
+    replaceVideoTrackForAllPeers,
+  } = useGroupWebRTC({ localStream });
 
   useEffect(() => {
     if (!getDisplayName()) navigate("/", { state: { returnTo: `/rooms/${roomId}` } });
   }, [navigate, roomId]);
 
   useEffect(() => {
-    if (!room) api.getRoom(roomId).then(setRoom).catch(() => { });
+    if (!room) api.getRoom(roomId).then(setRoom).catch(() => {});
   }, [room, roomId]);
-
-  useEffect(() => setRoomId(roomId), [roomId, setRoomId]);
 
   useEffect(() => {
     if (phase !== "connecting-media") return undefined;
@@ -92,16 +97,17 @@ export default function GroupRoom() {
   useEffect(() => {
     if (mediaRequested.current) return;
     mediaRequested.current = true;
-    const connectRoom = () => {
-      socket.connect();
-    };
-
-    connectRoom();
-    navigator.mediaDevices?.getUserMedia({ video: false, audio: VOICE_CONSTRAINTS }).then((stream) => {
-      stream.getAudioTracks().forEach((track) => { track.enabled = false; });
-      localStreamRef.current = stream;
-      setLocalStream(stream);
-    }).catch(() => { });
+    socket.connect();
+    navigator.mediaDevices
+      ?.getUserMedia({ video: false, audio: VOICE_CONSTRAINTS })
+      .then((stream) => {
+        stream.getAudioTracks().forEach((track) => {
+          track.enabled = false;
+        });
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+      })
+      .catch(() => {});
 
     return () => {
       screenStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -113,57 +119,114 @@ export default function GroupRoom() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Join only once BOTH identified AND localStream are ready.
+  // The hook handles WebRTC for group:joined / group:peer-joined itself.
+  useEffect(() => {
+    if (!localStream || !identified) return;
+    if (phase !== "connecting-media") return;
+    socket.emit("group:join", { roomId, displayName: displayName.current });
+  }, [localStream, identified, phase, roomId]);
+
   useEffect(() => {
     const showBanner = (text) => {
       setBanner(text);
-      window.setTimeout(() => setBanner((current) => current === text ? null : current), 3800);
+      window.setTimeout(() => setBanner((current) => (current === text ? null : current)), 3800);
     };
+
     function onIdentified(identity) {
       if (identity?.displayName) displayName.current = identity.displayName;
       setRole(identity?.role || "user");
-      socket.emit("group:join", { roomId, displayName: displayName.current });
+      setIdentified(true);
     }
+
     function onJoined({ existingPeers, isModerator: moderator }) {
-      const safePeers = Array.isArray(existingPeers) ? existingPeers.filter((peer) => peer && typeof peer === "object") : [];
-      setPhase("joined"); setPeers(safePeers); setIsModerator(Boolean(moderator));
+      const safePeers = Array.isArray(existingPeers)
+        ? existingPeers.filter((peer) => peer && typeof peer === "object")
+        : [];
+      setPhase("joined");
+      setPeers(safePeers);
+      setIsModerator(Boolean(moderator));
       setMutedPeers(new Set(safePeers.filter((peer) => peer.isMuted).map((peer) => peer.socketId)));
-      safePeers.forEach((peer) => peer.socketId && connectToExistingPeer(peer.socketId));
+      // WebRTC connection to existing peers is handled inside useGroupWebRTC.
     }
+
     function onPeerJoined(peer) {
       if (!peer || typeof peer !== "object") return;
       setPeers((current) => [...current, peer]);
       if (peer.role === "developer") showBanner(`◈ DEVELOPER • ${peer.displayName || "Developer"} joined`);
       else if (peer.role === "admin") showBanner(`ADMIN • ${peer.displayName || "Admin"} joined`);
     }
-    function onPeerLeft({ socketId }) { setPeers((current) => current.filter((peer) => peer.socketId !== socketId)); }
-    function onPeerPromoted({ socketId }) { setPeers((current) => current.map((peer) => peer.socketId === socketId ? { ...peer, isModerator: true } : peer)); }
+
+    function onPeerLeft({ socketId }) {
+      setPeers((current) => current.filter((peer) => peer.socketId !== socketId));
+    }
+
+    function onPeerPromoted({ socketId }) {
+      setPeers((current) => current.map((peer) => (peer.socketId === socketId ? { ...peer, isModerator: true } : peer)));
+    }
+
     function onPeerDemoted({ socketId, displayName: demotedName }) {
-      setPeers((current) => current.map((peer) => peer.socketId === socketId ? { ...peer, isModerator: false } : peer));
+      setPeers((current) => current.map((peer) => (peer.socketId === socketId ? { ...peer, isModerator: false } : peer)));
       if (demotedName) showBanner(`${demotedName} is no longer a host.`);
     }
+
     function onChatMessage(message) {
       if (!message || typeof message !== "object") return;
       setMessages((current) => {
-        const safeMessages = Array.isArray(current)
-          ? current.filter((item) => item && typeof item === "object")
-          : [];
+        const safeMessages = Array.isArray(current) ? current.filter((item) => item && typeof item === "object") : [];
         const incomingId = message.clientMessageId;
         if (!incomingId) return [...safeMessages, message];
-        const alreadyExists = safeMessages.some(
-          (item) => item && typeof item === "object" && item.clientMessageId === incomingId
-        );
+        const alreadyExists = safeMessages.some((item) => item && typeof item === "object" && item.clientMessageId === incomingId);
         return alreadyExists ? safeMessages : [...safeMessages, message];
       });
     }
-    function onForceMute() { localStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = false; }); setMicOn(false); setForceMuted(true); showBanner("The host muted your mic."); }
-    function onForceUnmute() { setForceMuted(false); showBanner("Your mic is available again."); }
-    function onMovedToWaiting() { closeAll(); setPeers([]); setPhase("waiting"); }
-    function onAdmitted() { setPeers([]); setForceMuted(false); setPhase("connecting-media"); socket.emit("group:join", { roomId, displayName: displayName.current }); }
-    function onRemoved({ reason }) { alert(reason || "You were removed from this room."); navigate("/rooms"); }
-    function onPeerMuted({ socketId }) { setMutedPeers((current) => new Set(current).add(socketId)); }
-    function onPeerUnmuted({ socketId }) { setMutedPeers((current) => { const next = new Set(current); next.delete(socketId); return next; }); }
-    function onPromoted() { setIsModerator(true); showBanner("You are now a room host."); }
-    function onDemoted({ message }) { setIsModerator(false); showBanner(message || "Your host role was removed."); }
+
+    function onForceMute() {
+      localStreamRef.current?.getAudioTracks().forEach((track) => {
+        track.enabled = false;
+      });
+      setMicOn(false);
+      setForceMuted(true);
+      showBanner("The host muted your mic.");
+    }
+    function onForceUnmute() {
+      setForceMuted(false);
+      showBanner("Your mic is available again.");
+    }
+    function onMovedToWaiting() {
+      closeAll();
+      setPeers([]);
+      setPhase("waiting");
+    }
+    function onAdmitted() {
+      setPeers([]);
+      setForceMuted(false);
+      setPhase("connecting-media");
+      setIdentified(true);
+    }
+    function onRemoved({ reason }) {
+      alert(reason || "You were removed from this room.");
+      navigate("/rooms");
+    }
+    function onPeerMuted({ socketId }) {
+      setMutedPeers((current) => new Set(current).add(socketId));
+    }
+    function onPeerUnmuted({ socketId }) {
+      setMutedPeers((current) => {
+        const next = new Set(current);
+        next.delete(socketId);
+        return next;
+      });
+    }
+    function onPromoted() {
+      setIsModerator(true);
+      showBanner("You are now a room host.");
+    }
+    function onDemoted({ message }) {
+      setIsModerator(false);
+      showBanner(message || "Your host role was removed.");
+    }
+
     function onMusicState(next) {
       if (!next || typeof next !== "object") return;
       if (next.status === "stopped") {
@@ -176,20 +239,53 @@ export default function GroupRoom() {
       if (!hasPlayableTrack) return;
       setMusic((current) => ({ ...current, ...next, receivedAt: Date.now() }));
     }
-    function onMusicError({ message }) { showBanner(message); }
-    function onWaitingList({ waiting }) { setWaitingList(Array.isArray(waiting) ? waiting : []); }
-    function onGameState(next) { setGame(next && typeof next === "object" ? next : null); if (!next) { setDrawWord(""); setUnoHand([]); } setGameError(""); }
-    function onGameError({ message }) { setGameError(message || "The game is temporarily unavailable."); }
-    function onGameDraw({ gameId, stroke }) { setGame((current) => current?.gameId === gameId ? { ...current, drawStrokes: [...(current.drawStrokes || []), stroke].slice(-500) } : current); }
-    function onDrawWord({ word }) { setDrawWord(word || ""); }
-    function onUnoHand({ hand }) { setUnoHand(Array.isArray(hand) ? hand : []); }
+    function onMusicError({ message }) {
+      showBanner(message);
+    }
+    function onWaitingList({ waiting }) {
+      setWaitingList(Array.isArray(waiting) ? waiting : []);
+    }
+
+    function onGameState(next) {
+      setGame(next && typeof next === "object" ? next : null);
+      if (!next) {
+        setDrawWord("");
+        setUnoHand([]);
+      }
+      setGameError("");
+    }
+    function onGameError({ message }) {
+      setGameError(message || "The game is temporarily unavailable.");
+    }
+    function onGameDraw({ gameId, stroke }) {
+      setGame((current) =>
+        current?.gameId === gameId
+          ? { ...current, drawStrokes: [...(current.drawStrokes || []), stroke].slice(-500) }
+          : current
+      );
+    }
+    function onDrawWord({ word }) {
+      setDrawWord(word || "");
+    }
+    function onUnoHand({ hand }) {
+      setUnoHand(Array.isArray(hand) ? hand : []);
+    }
+
     function identify() {
       if (identifySent.current) return;
       identifySent.current = true;
-      socket.emit("identify", { fingerprint: getFingerprint(), displayName: displayName.current, ageConfirmed: true, premiumToken: getPremiumToken(), avatarUrl: getAvatarUrl() });
+      socket.emit("identify", {
+        fingerprint: getFingerprint(),
+        displayName: displayName.current,
+        ageConfirmed: true,
+        premiumToken: getPremiumToken(),
+        avatarUrl: getAvatarUrl(),
+      });
     }
+
     function onBlocked({ reason }) {
       identifySent.current = false;
+      setIdentified(false);
       setBlockedReason(reason);
       setPhase("blocked");
       if (reason === "server_error") showBanner("The room service could not verify your session. Please try again.");
@@ -198,37 +294,75 @@ export default function GroupRoom() {
       setBlockedReason(reason === "room_full" ? `room_full:${maxParticipants || ""}` : reason);
       setPhase("blocked");
     }
-    function onConnect() { setSocketReady(true); identify(); }
+    function onConnect() {
+      setSocketReady(true);
+      identify();
+    }
     function onDisconnect() {
       setSocketReady(false);
+      setIdentified(false);
       closeAll();
       setPeers([]);
       setPhase("connecting-media");
       identifySent.current = false;
     }
 
-    socket.on("connect", onConnect); socket.on("disconnect", onDisconnect);
-    socket.on("blocked", onBlocked); socket.on("group:join-rejected", onJoinRejected);
-    socket.on("identified", onIdentified); socket.on("group:joined", onJoined);
-    socket.on("group:peer-joined", onPeerJoined); socket.on("group:peer-left", onPeerLeft); socket.on("group:peer-promoted", onPeerPromoted); socket.on("group:peer-demoted", onPeerDemoted);
-    socket.on("group:chat-message", onChatMessage); socket.on("group:force-mute", onForceMute);
-    socket.on("group:force-unmute", onForceUnmute); socket.on("group:moved-to-waiting", onMovedToWaiting);
-    socket.on("group:admitted", onAdmitted); socket.on("group:removed", onRemoved);
-    socket.on("group:promoted", onPromoted); socket.on("group:demoted", onDemoted); socket.on("group:peer-muted", onPeerMuted);
-    socket.on("group:peer-unmuted", onPeerUnmuted); socket.on("group:music-state", onMusicState);
-    socket.on("group:music-error", onMusicError); socket.on("group:waiting-list", onWaitingList);
-    socket.on("group:game-state", onGameState); socket.on("group:game-error", onGameError); socket.on("group:game-draw", onGameDraw); socket.on("group:draw-word", onDrawWord); socket.on("group:uno-hand", onUnoHand);
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("blocked", onBlocked);
+    socket.on("group:join-rejected", onJoinRejected);
+    socket.on("identified", onIdentified);
+    socket.on("group:joined", onJoined);
+    socket.on("group:peer-joined", onPeerJoined);
+    socket.on("group:peer-left", onPeerLeft);
+    socket.on("group:peer-promoted", onPeerPromoted);
+    socket.on("group:peer-demoted", onPeerDemoted);
+    socket.on("group:chat-message", onChatMessage);
+    socket.on("group:force-mute", onForceMute);
+    socket.on("group:force-unmute", onForceUnmute);
+    socket.on("group:moved-to-waiting", onMovedToWaiting);
+    socket.on("group:admitted", onAdmitted);
+    socket.on("group:removed", onRemoved);
+    socket.on("group:promoted", onPromoted);
+    socket.on("group:demoted", onDemoted);
+    socket.on("group:peer-muted", onPeerMuted);
+    socket.on("group:peer-unmuted", onPeerUnmuted);
+    socket.on("group:music-state", onMusicState);
+    socket.on("group:music-error", onMusicError);
+    socket.on("group:waiting-list", onWaitingList);
+    socket.on("group:game-state", onGameState);
+    socket.on("group:game-error", onGameError);
+    socket.on("group:game-draw", onGameDraw);
+    socket.on("group:draw-word", onDrawWord);
+    socket.on("group:uno-hand", onUnoHand);
+
     if (socket.connected) identify();
 
     return () => {
-      ["connect", "disconnect", "blocked", "group:join-rejected", "identified", "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted", "group:peer-demoted", "group:chat-message", "group:force-mute", "group:force-unmute", "group:moved-to-waiting", "group:admitted", "group:removed", "group:promoted", "group:demoted", "group:peer-muted", "group:peer-unmuted", "group:music-state", "group:music-error", "group:waiting-list", "group:game-state", "group:game-error", "group:game-draw", "group:draw-word", "group:uno-hand"].forEach((event) => socket.off(event));
+      [
+        "connect", "disconnect", "blocked", "group:join-rejected", "identified",
+        "group:joined", "group:peer-joined", "group:peer-left", "group:peer-promoted",
+        "group:peer-demoted", "group:chat-message", "group:force-mute",
+        "group:force-unmute", "group:moved-to-waiting", "group:admitted",
+        "group:removed", "group:promoted", "group:demoted", "group:peer-muted",
+        "group:peer-unmuted", "group:music-state", "group:music-error",
+        "group:waiting-list", "group:game-state", "group:game-error",
+        "group:game-draw", "group:draw-word", "group:uno-hand",
+      ].forEach((event) => socket.off(event));
     };
-  }, [closeAll, connectToExistingPeer, navigate, roomId]);
+  }, [closeAll, navigate, roomId]);
 
   useEffect(() => {
-    Object.entries(remoteStreams).forEach(([socketId, stream]) => stream.getAudioTracks().forEach((track) => { track.enabled = !mutedPeers.has(socketId); }));
+    Object.entries(remoteStreams).forEach(([socketId, stream]) =>
+      stream.getAudioTracks().forEach((track) => {
+        track.enabled = !mutedPeers.has(socketId);
+      })
+    );
   }, [mutedPeers, remoteStreams]);
-  useEffect(() => { chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: "smooth" }); }, [messages]);
+
+  useEffect(() => {
+    chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
 
   async function toggleMic() {
     if (forceMuted) return;
@@ -236,33 +370,46 @@ export default function GroupRoom() {
     if (!existingAudioTrack) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: VOICE_CONSTRAINTS });
-        stream.getAudioTracks().forEach((track) => { track.enabled = true; });
+        stream.getAudioTracks().forEach((track) => {
+          track.enabled = true;
+        });
         localStreamRef.current = stream;
         setLocalStream(stream);
         setMicOn(true);
       } catch {
         setBanner("Microphone permission is unavailable.");
-        window.setTimeout(() => setBanner((current) => current === "Microphone permission is unavailable." ? null : current), 3800);
+        window.setTimeout(() => setBanner((current) => (current === "Microphone permission is unavailable." ? null : current)), 3800);
       }
       return;
     }
-    localStream?.getAudioTracks().forEach((track) => { track.enabled = !track.enabled; });
+    localStream?.getAudioTracks().forEach((track) => {
+      track.enabled = !track.enabled;
+    });
     setMicOn((current) => !current);
   }
+
   async function toggleCam() {
     if (screenSharing) return;
     const tracks = localStream?.getVideoTracks() || [];
     if (!tracks.length) {
       try {
         const videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraFacing } });
-        const track = videoStream.getVideoTracks()[0]; localStream.addTrack(track);
+        const track = videoStream.getVideoTracks()[0];
+        localStream.addTrack(track);
         if (phase === "joined") await addVideoTrackToAllPeers(track, localStream);
         setCamOn(true);
-      } catch { alert("Camera access was denied or unavailable."); }
+      } catch {
+        alert("Camera access was denied or unavailable.");
+      }
       return;
     }
-    const next = !camOn; tracks.forEach((track) => { track.enabled = next; }); setCamOn(next);
+    const next = !camOn;
+    tracks.forEach((track) => {
+      track.enabled = next;
+    });
+    setCamOn(next);
   }
+
   async function flipCamera() {
     if (screenSharing || !camOn || !localStream) return;
     const nextFacing = cameraFacing === "user" ? "environment" : "user";
@@ -270,17 +417,26 @@ export default function GroupRoom() {
     try {
       videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: nextFacing } } });
     } catch {
-      try { videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: nextFacing } }); } catch { setBanner("The other camera is not available on this device."); return; }
+      try {
+        videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: nextFacing } });
+      } catch {
+        setBanner("The other camera is not available on this device.");
+        return;
+      }
     }
     const nextTrack = videoStream.getVideoTracks()[0];
     const currentTrack = localStream.getVideoTracks()[0];
-    if (!nextTrack || !currentTrack) { videoStream.getTracks().forEach((track) => track.stop()); return; }
+    if (!nextTrack || !currentTrack) {
+      videoStream.getTracks().forEach((track) => track.stop());
+      return;
+    }
     localStream.removeTrack(currentTrack);
     currentTrack?.stop();
     localStream.addTrack(nextTrack);
     await replaceVideoTrackForAllPeers(nextTrack);
     setCameraFacing(nextFacing);
   }
+
   async function toggleScreenShare() {
     if (screenSharing) {
       const screenStream = screenStreamRef.current;
@@ -329,14 +485,20 @@ export default function GroupRoom() {
         if (phase === "joined") await addTrackToAllPeers(audioTrack, localStream);
       }
       screenStreamRef.current = screenStream;
-      screenVideo.onended = () => { screenShareHandlerRef.current?.(); };
+      screenVideo.onended = () => {
+        screenShareHandlerRef.current?.();
+      };
       setScreenSharing(true);
     } catch {
       setBanner("Screen sharing was cancelled or unavailable.");
     }
   }
   screenShareHandlerRef.current = toggleScreenShare;
-  function leave() { navigate("/rooms"); }
+
+  function leave() {
+    navigate("/rooms");
+  }
+
   function sendMessage() {
     const text = draft.trim();
     if (!text || !socketReady) return;
@@ -345,22 +507,21 @@ export default function GroupRoom() {
       if (!result?.ok) return;
       if (result.message && typeof result.message === "object") {
         setMessages((current) => {
-          const safeMessages = Array.isArray(current)
-            ? current.filter((item) => item && typeof item === "object")
-            : [];
+          const safeMessages = Array.isArray(current) ? current.filter((item) => item && typeof item === "object") : [];
           const messageId = result.message.clientMessageId;
-          if (messageId && safeMessages.some(
-            (item) => item && typeof item === "object" && item.clientMessageId === messageId
-          )) return safeMessages;
+          if (messageId && safeMessages.some((item) => item && typeof item === "object" && item.clientMessageId === messageId)) return safeMessages;
           return [...safeMessages, result.message];
         });
       }
       setDraft("");
     });
   }
+
   function startGame(mode = "pulse") {
     setGameError("");
-    socket.emit("group:game-start", { roomId, mode }, (result) => { if (!result?.ok) setGameError(result?.error || "The game could not start."); });
+    socket.emit("group:game-start", { roomId, mode }, (result) => {
+      if (!result?.ok) setGameError(result?.error || "The game could not start.");
+    });
   }
   function tapGame() {
     if (!game) return;
@@ -384,7 +545,9 @@ export default function GroupRoom() {
     });
   }
   function stopGame() {
-    socket.emit("group:game-stop", { roomId }, (result) => { if (!result?.ok) setGameError(result?.error || "The game could not stop."); });
+    socket.emit("group:game-stop", { roomId }, (result) => {
+      if (!result?.ok) setGameError(result?.error || "The game could not stop.");
+    });
   }
   function addConversationSpark() {
     setDraft(`Spark: ${CONVERSATION_SPARKS[sparkIndex]}`);
@@ -405,18 +568,26 @@ export default function GroupRoom() {
 
   if (phase === "blocked") {
     const roomFull = String(blockedReason || "").startsWith("room_full");
-    const blockedText = blockedReason === "banned"
-      ? "This device or session is currently restricted. If this seems wrong, ask an administrator to review the active ban."
-      : blockedReason === "age_confirmation_required"
-        ? "Age confirmation is required before joining."
-        : blockedReason === "rate_limited"
-          ? "Too many connection attempts came from this network. Please wait a few minutes and try again. This is not a ban."
-          : blockedReason === "server_error"
-            ? "The room server could not verify your session. Please refresh and try again."
-            : roomFull
-              ? `This room has reached its limit${String(blockedReason).split(":")[1] ? ` of ${String(blockedReason).split(":")[1]} people` : ""}. Try another room or come back later.`
-              : "The room connection could not be verified. Please try again.";
-    return <EmptyState title={blockedReason === "banned" ? "Access restricted" : roomFull ? "Room is full" : "Can't join this room"} text={blockedText} action="Back to rooms" onAction={leave} />;
+    const blockedText =
+      blockedReason === "banned"
+        ? "This device or session is currently restricted. If this seems wrong, ask an administrator to review the active ban."
+        : blockedReason === "age_confirmation_required"
+          ? "Age confirmation is required before joining."
+          : blockedReason === "rate_limited"
+            ? "Too many connection attempts came from this network. Please wait a few minutes and try again. This is not a ban."
+            : blockedReason === "server_error"
+              ? "The room server could not verify your session. Please refresh and try again."
+              : roomFull
+                ? `This room has reached its limit${String(blockedReason).split(":")[1] ? ` of ${String(blockedReason).split(":")[1]} people` : ""}. Try another room or come back later.`
+                : "The room connection could not be verified. Please try again.";
+    return (
+      <EmptyState
+        title={blockedReason === "banned" ? "Access restricted" : roomFull ? "Room is full" : "Can't join this room"}
+        text={blockedText}
+        action="Back to rooms"
+        onAction={leave}
+      />
+    );
   }
   if (phase === "waiting") return <EmptyState title="You're in the waiting room" text="The host moved you here. You'll rejoin automatically if they let you back in." action="Leave instead" onAction={leave} />;
   if (phase === "connecting-media") return <EmptyState title="Joining your room" text="Connecting securely…" />;
@@ -428,6 +599,7 @@ export default function GroupRoom() {
   const hasConnectionIssue = Object.values(connectionStates).some((state) => ["disconnected", "connecting", "new"].includes(state));
   const hasLiveAudio = Boolean(localStream?.getAudioTracks?.().some((track) => track.readyState === "live"));
   const gridCols = totalTiles <= 2 ? "grid-cols-1 sm:grid-cols-2" : totalTiles <= 4 ? "grid-cols-2" : "grid-cols-2 md:grid-cols-3";
+
   return (
     <div className="room-shell min-h-screen flex flex-col px-3 sm:px-4 md:px-8 py-3 sm:py-4">
       <header className="room-header flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-white/5">
@@ -435,54 +607,72 @@ export default function GroupRoom() {
         <div className="text-center flex-1 min-w-0 order-3 sm:order-none basis-full sm:basis-auto">
           <h1 className="font-display font-semibold text-white flex items-center gap-2 justify-center truncate">
             <span className="truncate">{room?.name || "Room"}</span>
-            {isModerator && <span className="text-[10px] font-mono uppercase tracking-wide px-2 py-0.5 rounded-full bg-signal/15 text-signal2 border border-signal/30 shrink-0">{role === "premium" ? "music mod" : "host"}</span>}
+            {isModerator && (
+              <span className="text-[10px] font-mono uppercase tracking-wide px-2 py-0.5 rounded-full bg-signal/15 text-signal2 border border-signal/30 shrink-0">
+                {role === "premium" ? "music mod" : "host"}
+              </span>
+            )}
           </h1>
           <p className="text-xs text-mist font-mono mt-1">{totalTiles} {totalTiles === 1 ? "person" : "people"} · live</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {!hasLiveAudio && <span className="hidden sm:inline text-xs font-mono text-amber-300">mic not connected</span>}
           {hasConnectionIssue && <span className="hidden sm:inline text-xs font-mono text-amber-300">audio reconnecting</span>}
-          <span className={`flex items-center gap-2 text-xs font-mono ${socketReady ? "text-signal2" : "text-coral"}`}><span className={`w-2 h-2 rounded-full ${socketReady ? "bg-signal animate-pulse" : "bg-coral"}`} />{socketReady ? "live" : "reconnecting"}</span>
+          <span className={`flex items-center gap-2 text-xs font-mono ${socketReady ? "text-signal2" : "text-coral"}`}>
+            <span className={`w-2 h-2 rounded-full ${socketReady ? "bg-signal animate-pulse" : "bg-coral"}`} />
+            {socketReady ? "live" : "reconnecting"}
+          </span>
           <a href="#room-controls" className="room-controls-jump ui-button ui-button-quiet min-h-9 px-2.5 text-xs">Controls</a>
         </div>
       </header>
-      {banner && <div className={`mb-3 mx-auto max-w-[92%] px-4 py-2 rounded-xl text-sm font-mono text-center animate-enter ${banner.startsWith("◈") ? "role-entrance-developer" : "role-entrance-admin"}`}>{banner}</div>}
-      {phase === "joined" && (!hasLiveAudio || hasConnectionIssue) && (
-        <div className="mb-3 mx-auto flex max-w-2xl items-center justify-between gap-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-xs text-amber-100">
-          <span>{!hasLiveAudio ? "Your microphone is not connected yet. You can still listen, or tap the mic button to retry." : "Some audio connections are recovering. Stay in the room while we reconnect them."}</span>
-          {!hasLiveAudio && <button onClick={toggleMic} className="ui-button shrink-0 border-amber-200/30 bg-amber-200/10 px-3 text-xs text-amber-100">Retry mic</button>}
+
+      {banner && (
+        <div className={`mb-3 mx-auto max-w-[92%] px-4 py-2 rounded-xl text-sm font-mono text-center animate-enter ${banner.startsWith("◈") ? "role-entrance-developer" : "role-entrance-admin"}`}>
+          {banner}
         </div>
       )}
+
+      {phase === "joined" && (!hasLiveAudio || hasConnectionIssue) && (
+        <div className="mb-3 mx-auto flex max-w-2xl items-center justify-between gap-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-xs text-amber-100">
+          <span>
+            {!hasLiveAudio
+              ? "Your microphone is not connected yet. You can still listen, or tap the mic button to retry."
+              : "Some audio connections are recovering. Stay in the room while we reconnect them."}
+          </span>
+          {!hasLiveAudio && (
+            <button onClick={toggleMic} className="ui-button shrink-0 border-amber-200/30 bg-amber-200/10 px-3 text-xs text-amber-100">
+              Retry mic
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 sm:gap-5 min-h-0">
         <div className="flex flex-col gap-3 sm:gap-4 min-h-0">
           <MusicPlayerBoundary music={music} isModerator={isModerator} onStop={() => socket.emit("group:music-stop", { roomId })} />
-          <div className={`group-room-grid relative z-0 grid ${gridCols} gap-2 sm:gap-3 flex-1 content-start animate-enter`}>
 
+          <div className={`group-room-grid relative z-0 grid ${gridCols} gap-2 sm:gap-3 flex-1 content-start animate-enter`}>
             <div className="relative">
-              {/* Local Stream - We keep this one muted naturally so you don't hear yourself */}
               <VideoTile stream={localStream} muted mirrored label={displayName.current} avatarUrl={getAvatarUrl()} role={role} />
-              {isModerator && <span className="absolute top-3 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">{role === "premium" ? "MUSIC MOD" : "HOST"}</span>}
+              {isModerator && (
+                <span className="absolute top-3 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">
+                  {role === "premium" ? "MUSIC MOD" : "HOST"}
+                </span>
+              )}
             </div>
 
             {visiblePeers.map((peer) => {
               const canManagePeer =
                 isModerator &&
                 peer.role !== "developer" &&
-                (
-                  role === "developer" ||
+                (role === "developer" ||
                   !peer.isModerator ||
-                  (role === "admin" &&
-                    ["user", "premium"].includes(peer.role || "user"))
-                );
+                  (role === "admin" && ["user", "premium"].includes(peer.role || "user")));
 
-              const canReport =
-                !["admin", "developer"].includes(peer.role || "user");
+              const canReport = !["admin", "developer"].includes(peer.role || "user");
 
               return (
-                <div
-                  key={peer.socketId}
-                  className="relative z-0 min-w-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[90]"
-                >
+                <div key={peer.socketId} className="relative z-0 min-w-0 focus-within:z-20 has-[[data-menu-open=true]]:z-[90]">
                   <VideoTile
                     stream={remoteStreams[peer.socketId]}
                     muted
@@ -491,7 +681,6 @@ export default function GroupRoom() {
                     role={peer.role || "user"}
                   />
 
-                  {/* Top-right actions */}
                   <div className="absolute top-2 right-2 z-30 flex items-center gap-1.5">
                     {canReport && (
                       <button
@@ -499,24 +688,7 @@ export default function GroupRoom() {
                         onClick={() => setReportTargetId(peer.socketId)}
                         aria-label={`Report ${peer.displayName || "user"}`}
                         title="Report user"
-                        className="
-              flex h-9 w-9 shrink-0 items-center justify-center
-              rounded-md
-              border border-white/10
-              bg-black/70
-              text-white/75
-              shadow-lg
-              backdrop-blur-md
-              transition-all
-              hover:bg-coral/20
-              hover:text-coral
-              hover:border-coral/30
-              active:scale-95
-              focus:outline-none
-              focus:ring-2
-              focus:ring-coral/40
-              touch-manipulation
-            "
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/70 text-white/75 shadow-lg backdrop-blur-md transition-all hover:bg-coral/20 hover:text-coral hover:border-coral/30 active:scale-95 focus:outline-none focus:ring-2 focus:ring-coral/40 touch-manipulation"
                       >
                         <FlagIcon />
                       </button>
@@ -544,44 +716,53 @@ export default function GroupRoom() {
                     )}
                   </div>
 
-                  {/* Host badge */}
                   {peer.isModerator && (
-                    <span
-                      className="
-            absolute top-11 right-3 z-10
-            rounded-md
-            border border-signal/30
-            bg-black/70
-            px-2 py-1
-            font-mono text-[10px]
-            font-bold tracking-wide
-            text-signal2
-            backdrop-blur
-          "
-                    >
+                    <span className="absolute top-11 right-3 z-10 rounded-md border border-signal/30 bg-black/70 px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-signal2 backdrop-blur">
                       {peer.role === "premium" ? "MUSIC MOD" : "HOST"}
                     </span>
                   )}
 
-                  <RemoteAudioPlayer
-                    stream={remoteStreams[peer.socketId]}
-                    peerId={peer.socketId}
-                  />
+                  <RemoteAudioPlayer stream={remoteStreams[peer.socketId]} peerId={peer.socketId} />
                 </div>
               );
             })}
-
           </div>
+
           <div id="room-controls" className="sticky bottom-0 z-50 pointer-events-auto flex flex-wrap items-center justify-center gap-2 sm:gap-3 py-3 px-2 bg-ink/90 backdrop-blur-md border-t border-white/5 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
-            <IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>{micOn && !forceMuted ? "🎙️" : "🔇"}</IconButton>
-            <IconButton onClick={toggleCam} disabled={screenSharing} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>{camOn ? "📹" : "🚫"}</IconButton>
+            <IconButton onClick={toggleMic} disabled={forceMuted} active={micOn && !forceMuted} label={forceMuted ? "Muted by host" : micOn ? "Mute mic" : "Unmute mic"}>
+              {micOn && !forceMuted ? "🎙️" : "🔇"}
+            </IconButton>
+            <IconButton onClick={toggleCam} disabled={screenSharing} active={camOn} label={camOn ? "Turn camera off" : "Turn camera on"}>
+              {camOn ? "📹" : "🚫"}
+            </IconButton>
             <IconButton onClick={flipCamera} disabled={!camOn || screenSharing} active={false} label="Switch front and rear camera">↔</IconButton>
-            <IconButton onClick={toggleScreenShare} active={screenSharing} label={screenSharing ? "Stop sharing screen" : "Share screen"}>{screenSharing ? "⏹" : "🖥️"}</IconButton>
+            <IconButton onClick={toggleScreenShare} active={screenSharing} label={screenSharing ? "Stop sharing screen" : "Share screen"}>
+              {screenSharing ? "⏹" : "🖥️"}
+            </IconButton>
             <button onClick={leave} className="ui-button ui-button-danger shrink-0 bg-coral px-5 text-sm text-ink shadow-lg shadow-coral/10 sm:px-6">Leave room</button>
           </div>
         </div>
+
         <aside className="flex flex-col gap-4 min-h-0 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
-          <QuickGamePanel game={game} isModerator={isModerator} onStart={startGame} onTap={tapGame} onAnswer={answerGame} onDraw={drawGame} isDrawer={game?.drawerId === socket.id} drawWord={drawWord} isBombTurn={game?.bombTurnId === socket.id} canEndGame={["admin", "developer", "premium"].includes(role)} onStop={stopGame} error={gameError} unoHand={unoHand} isUnoTurn={game?.unoTurnId === socket.id} mustCallUno={game?.unoMustCall === socket.id} onUno={unoAction} />
+          <QuickGamePanel
+            game={game}
+            isModerator={isModerator}
+            onStart={startGame}
+            onTap={tapGame}
+            onAnswer={answerGame}
+            onDraw={drawGame}
+            isDrawer={game?.drawerId === socket.id}
+            drawWord={drawWord}
+            isBombTurn={game?.bombTurnId === socket.id}
+            canEndGame={["admin", "developer", "premium"].includes(role)}
+            onStop={stopGame}
+            error={gameError}
+            unoHand={unoHand}
+            isUnoTurn={game?.unoTurnId === socket.id}
+            mustCallUno={game?.unoMustCall === socket.id}
+            onUno={unoAction}
+          />
+
           {isModerator && visibleWaiting.length > 0 && (
             <div className="bg-panel/85 rounded-2xl border border-violet/30 overflow-hidden surface-lift shrink-0">
               <div className="px-4 py-3 border-b border-white/5 font-display text-sm text-violet">Waiting room · {visibleWaiting.length}</div>
@@ -598,13 +779,19 @@ export default function GroupRoom() {
               </div>
             </div>
           )}
+
           <div className="flex flex-col bg-panel/85 rounded-xl border border-white/10 overflow-hidden surface-lift h-[60vh] max-h-[60vh] shrink-0 animate-enter lg:h-[min(60vh,42rem)] lg:max-h-[min(60vh,42rem)] lg:flex-none lg:min-h-0">
             <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between shrink-0">
               <div className="min-w-0">
                 <p className="font-display text-sm text-white">Room chat</p>
                 <p className="text-[11px] text-mist/60 mt-0.5">Chat scrolls here. Hosts can type /play song name.</p>
               </div>
-              <div className="flex items-center gap-1.5 shrink-0"><button onClick={addConversationSpark} className="ui-button ui-button-violet min-h-9 px-2 text-[11px]">✦ spark</button>{isModerator && <button onClick={() => setDraft("/play ")} className="ui-button ui-button-primary min-h-9 bg-signal/10 px-2 text-[11px] text-signal2">+ song</button>}</div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button onClick={addConversationSpark} className="ui-button ui-button-violet min-h-9 px-2 text-[11px]">✦ spark</button>
+                {isModerator && (
+                  <button onClick={() => setDraft("/play ")} className="ui-button ui-button-primary min-h-9 bg-signal/10 px-2 text-[11px] text-signal2">+ song</button>
+                )}
+              </div>
             </div>
             <div ref={chatScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-2">
               {visibleMessages.length === 0 && <p className="text-sm text-mist/60">The room is quiet. Say hello.</p>}
@@ -616,34 +803,49 @@ export default function GroupRoom() {
               ))}
             </div>
             <div className="p-3 border-t border-white/5 flex gap-2 shrink-0">
-              <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === "Enter" && sendMessage()} placeholder="Say something…" maxLength={2000} className="flex-1 min-w-0 bg-panel2 rounded-lg px-3 py-2 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:outline-signal" />
+              <input
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => event.key === "Enter" && sendMessage()}
+                placeholder="Say something…"
+                maxLength={2000}
+                className="flex-1 min-w-0 bg-panel2 rounded-lg px-3 py-2 text-sm text-white placeholder:text-mist/50 outline-none focus-visible:outline-signal"
+              />
               <button onClick={sendMessage} className="ui-button ui-button-primary px-4 shrink-0">Send</button>
             </div>
           </div>
         </aside>
       </div>
+
       <ReportModal open={Boolean(reportTargetId)} onClose={() => setReportTargetId(null)} onSubmit={submitGroupReport} />
     </div>
   );
 }
 
-// --- FIXED iOS AUDIO PLAYER ---
-// This hidden component explicitly forces WebRTC audio tracks to play 
-// even when Apple/Safari tries to block them.
 function RemoteAudioPlayer({ stream, peerId }) {
   const audioRef = useRef(null);
 
   useEffect(() => {
-    if (audioRef.current && stream) {
-      audioRef.current.srcObject = stream;
-
-      audioRef.current.play().catch((err) => {
-        console.warn(`iOS Autoplay blocked for ${peerId}. Audio requires a screen tap.`, err);
-      });
+    const el = audioRef.current;
+    if (!el || !stream) return;
+    if (el.srcObject !== stream) {
+      el.srcObject = stream;
     }
+    const tryPlay = () => {
+      el.play().catch((err) => {
+        console.warn(`[audio] autoplay blocked for ${peerId}`, err);
+      });
+    };
+    tryPlay();
+    const onTouch = () => {
+      tryPlay();
+      document.removeEventListener("touchstart", onTouch);
+    };
+    document.addEventListener("touchstart", onTouch, { once: true });
+    return () => document.removeEventListener("touchstart", onTouch);
   }, [stream, peerId]);
 
-  return <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />;
+  return <audio ref={audioRef} autoPlay playsInline />;
 }
 
 function IconButton({ active, disabled = false, onClick, label, children }) {
@@ -665,9 +867,7 @@ function IconButton({ active, disabled = false, onClick, label, children }) {
             : "bg-coral/10 border-coral/30 text-coral"
         }`}
     >
-      <span className="pointer-events-none">
-        {children}
-      </span>
+      <span className="pointer-events-none">{children}</span>
     </button>
   );
 }
@@ -675,6 +875,7 @@ function IconButton({ active, disabled = false, onClick, label, children }) {
 function ModMenu({ isDeveloper, isAdmin, isPremium, isModerator, targetRole, isMuted, onMute, onUnmute, onWaiting, onRemove, onPromote, onDemote }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
+
   useEffect(() => {
     if (!open) return;
     function onOutside(event) {
@@ -683,30 +884,22 @@ function ModMenu({ isDeveloper, isAdmin, isPremium, isModerator, targetRole, isM
     document.addEventListener("pointerdown", onOutside);
     return () => document.removeEventListener("pointerdown", onOutside);
   }, [open]);
+
   const canDemote = isModerator && (isDeveloper || (isAdmin && targetRole === "user"));
   const promoteAction = !isModerator && !isPremium ? [["Make moderator", onPromote]] : [];
 
-  const items = isMuted ? [["Unmute", onUnmute], ["Waiting room", onWaiting], ...promoteAction, ...(canDemote ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]] : [["Mute mic", onMute], ["Waiting room", onWaiting], ...promoteAction, ...(canDemote ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]];
+  const items = isMuted
+    ? [["Unmute", onUnmute], ["Waiting room", onWaiting], ...promoteAction, ...(canDemote ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]]
+    : [["Mute mic", onMute], ["Waiting room", onWaiting], ...promoteAction, ...(canDemote ? [["Remove host role", onDemote]] : []), ["Remove", onRemove]];
 
   return (
-    <div
-      ref={menuRef}
-      className="relative z-40 shrink-0"
-      data-menu-open={open}
-    >
+    <div ref={menuRef} className="relative z-40 shrink-0" data-menu-open={open}>
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
         aria-label="Host actions"
         aria-expanded={open}
-        className="flex h-9 w-9 items-center justify-center rounded-md
-                 bg-black/60 text-white/80
-                 border border-white/10
-                 backdrop-blur
-                 transition-colors
-                 hover:bg-white/10 hover:text-white
-                 focus:outline-none focus:ring-2 focus:ring-signal/50
-                 touch-manipulation"
+        className="flex h-9 w-9 items-center justify-center rounded-md bg-black/60 text-white/80 border border-white/10 backdrop-blur transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-signal/50 touch-manipulation"
       >
         <EllipsisIcon />
       </button>
@@ -729,8 +922,6 @@ function ModMenu({ isDeveloper, isAdmin, isPremium, isModerator, targetRole, isM
       )}
     </div>
   );
-
-
 }
 
 function EmptyState({ title, text, action, onAction }) {
