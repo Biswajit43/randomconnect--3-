@@ -7,18 +7,40 @@ const DROP_DURATION = 60 * 1000; // 1 minute
 // Generate 4 consistent random drop times per local calendar day.
 function getDailyDrops(date) {
   const day = new Date(date);
+  day.setHours(0, 0, 0, 0);
 
-  // Only today's drop: October 26, 2026
-  if (
-    day.getFullYear() !== 2026 ||
-    day.getMonth() !== 9 ||
-    day.getDate() !== 26
-  ) {
-    return [];
+  const seedText = `${day.getFullYear()}-${day.getMonth() + 1}-${day.getDate()}`;
+
+  let seed = [...seedText].reduce(
+    (value, char) => (value * 31 + char.charCodeAt(0)) >>> 0,
+    7
+  );
+
+  function random() {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
   }
 
-  day.setHours(21, 0, 0, 0); // 9:00 PM local time
-  return [day];
+  const minutes = new Set();
+
+  // Four different times, spread throughout the day.
+  for (let slot = 0; slot < 4; slot++) {
+    let minute;
+
+    do {
+      minute = slot * 360 + Math.floor(random() * 360);
+    } while (minutes.has(minute));
+
+    minutes.add(minute);
+  }
+
+  return [...minutes]
+    .sort((a, b) => a - b)
+    .map((minute) => {
+      const drop = new Date(day);
+      drop.setMinutes(minute);
+      return drop;
+    });
 }
 
 function getDropStatus(now) {
