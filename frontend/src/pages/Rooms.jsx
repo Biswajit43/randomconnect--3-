@@ -6,8 +6,9 @@ import {
   useRef,
   useState,
 } from "react";
+import TelegramDrop from "../components/TelegramDrop.jsx";
 import { useNavigate } from "react-router-dom";
-import { api } from "../lib/api.js";
+import { api } from "../lib/api.js"; 
 import {
   clearLocalSession,
   getFingerprint,
@@ -547,6 +548,11 @@ export default function Rooms() {
             </button>
           </div>
         </section>
+
+        {/* TELEGRAM DROP */}
+        <div className="order-0 min-w-0 lg:col-span-2">
+          <TelegramDrop />
+        </div>
 
         <div className="contents lg:sticky lg:top-20 lg:order-1 lg:block lg:h-fit lg:space-y-5 lg:self-start">
           {/* 1-TO-1 */}
