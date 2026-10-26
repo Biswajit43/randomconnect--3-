@@ -1,14 +1,13 @@
 import {
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import TelegramDrop from "../components/TelegramDrop.jsx";
-import { useNavigate } from "react-router-dom";
-import { api } from "../lib/api.js"; 
+import { api } from "../lib/api.js";
 import {
   clearLocalSession,
   getFingerprint,
@@ -18,18 +17,10 @@ import {
 import RoomCard from "../components/RoomCard.jsx";
 import CreateRoomModal from "../components/CreateRoomModal.jsx";
 
-/* ------------------------------------------------------------------ */
-/*  Constants and helpers                                              */
-/* ------------------------------------------------------------------ */
-
 const NAME_MAX = 30;
-
 const PREFERENCES = ["any", "male", "female"];
-
 const QUICK_INTERESTS = ["music", "travel", "movies", "gaming"];
 
-// Same palette and hash as the landing page, so a person's colour matches
-// from the first screen to this one.
 const AVATAR_COLORS = [
   "#4CC9F0",
   "#9D8DF1",
@@ -40,63 +31,44 @@ const AVATAR_COLORS = [
 ];
 
 const NAME_ADJECTIVES = [
-  "Swift",
-  "Calm",
-  "Bright",
-  "Lucky",
-  "Cosmic",
-  "Mellow",
-  "Bold",
-  "Sunny",
+  "Swift", "Calm", "Bright", "Lucky",
+  "Cosmic", "Mellow", "Bold", "Sunny",
 ];
 
 const NAME_NOUNS = [
-  "Otter",
-  "Comet",
-  "Panda",
-  "Falcon",
-  "Maple",
-  "Orbit",
-  "Fox",
-  "Koala",
+  "Otter", "Comet", "Panda", "Falcon",
+  "Maple", "Orbit", "Fox", "Koala",
 ];
 
-function colorForName(text) {
+function colorForName(text = "") {
   let hash = 0;
-
   for (let i = 0; i < text.length; i += 1) {
     hash = text.charCodeAt(i) + ((hash << 5) - hash);
   }
-
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-// Array.from keeps emoji whole. charAt(0) would cut them in half.
-function initialOf(text) {
-  const first = Array.from((text || "").trim())[0];
-
+function initialOf(text = "") {
+  const first = Array.from(text.trim())[0];
   return first ? first.toUpperCase() : "?";
 }
 
 function randomName() {
-  const adjective =
-    NAME_ADJECTIVES[Math.floor(Math.random() * NAME_ADJECTIVES.length)];
-  const noun = NAME_NOUNS[Math.floor(Math.random() * NAME_NOUNS.length)];
-
-  return `${adjective}${noun}`;
+  return (
+    NAME_ADJECTIVES[Math.floor(Math.random() * NAME_ADJECTIVES.length)] +
+    NAME_NOUNS[Math.floor(Math.random() * NAME_NOUNS.length)]
+  );
 }
 
 function greeting() {
   const hour = new Date().getHours();
-
   if (hour < 5) return "Still up";
   if (hour < 12) return "Good morning";
   if (hour < 18) return "Good afternoon";
-
   return "Good evening";
 }
 
-function parseInterests(value) {
+function parseInterests(value = "") {
   return value
     .split(",")
     .map((tag) => tag.trim().toLowerCase())
@@ -104,9 +76,7 @@ function parseInterests(value) {
     .slice(0, 5);
 }
 
-/* ------------------------------------------------------------------ */
-/*  Toasts                                                             */
-/* ------------------------------------------------------------------ */
+/* ------------------------------ Toasts ------------------------------ */
 
 function useToasts() {
   const [toasts, setToasts] = useState([]);
@@ -114,35 +84,39 @@ function useToasts() {
   const push = useCallback((message, tone = "info") => {
     const id = `${Date.now()}-${Math.random()}`;
 
-    setToasts((current) => [...current.slice(-2), { id, message, tone }]);
+    setToasts((current) => [
+      ...current.slice(-2),
+      { id, message, tone },
+    ]);
 
     window.setTimeout(() => {
-      setToasts((current) => current.filter((toast) => toast.id !== id));
-    }, 3800);
+      setToasts((current) => current.filter((item) => item.id !== id));
+    }, 3500);
   }, []);
 
   return { toasts, push };
 }
 
 function ToastStack({ toasts }) {
-  if (toasts.length === 0) return null;
+  if (!toasts.length) return null;
 
   const tones = {
-    success: "border-signal/30 text-signal2",
-    error: "border-coral/40 text-coral",
+    success: "border-emerald-400/30 text-emerald-300",
+    error: "border-rose-400/30 text-rose-300",
     info: "border-white/15 text-white",
   };
 
   return (
     <div
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 bottom-4 z-[120] flex flex-col items-center gap-2 px-4 pb-[env(safe-area-inset-bottom)]"
+      className="pointer-events-none fixed inset-x-0 bottom-20 z-[150] flex flex-col items-center gap-2 px-4 pb-safe lg:bottom-4"
     >
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`pointer-events-auto max-w-sm rounded-xl border bg-panel px-4 py-3 text-sm font-medium shadow-2xl animate-[rmToastIn_.22s_ease-out] ${tones[toast.tone] || tones.info
-            }`}
+          className={`max-w-sm rounded-xl border bg-[#101a2c] px-4 py-3 text-sm shadow-2xl ${
+            tones[toast.tone] || tones.info
+          }`}
         >
           {toast.message}
         </div>
@@ -151,12 +125,11 @@ function ToastStack({ toasts }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Page                                                               */
-/* ------------------------------------------------------------------ */
+/* ------------------------------ Main page ------------------------------ */
 
 export default function Rooms() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toasts, push } = useToasts();
 
   const [rooms, setRooms] = useState([]);
@@ -168,7 +141,6 @@ export default function Rooms() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-
   const [preference, setPreference] = useState("any");
   const [interests, setInterests] = useState("");
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -181,65 +153,65 @@ export default function Rooms() {
   const [nameEditorOpen, setNameEditorOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-
   const [renameTarget, setRenameTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [roomBusy, setRoomBusy] = useState(false);
 
-  const closeNameEditor = useCallback(() => setNameEditorOpen(false), []);
-  const closeLogout = useCallback(() => setLogoutOpen(false), []);
-  const closeMenu = useCallback(() => setMenuOpen(false), []);
-  const closeRename = useCallback(() => setRenameTarget(null), []);
-  const closeDelete = useCallback(() => setDeleteTarget(null), []);
+  const roomsRef = useRef(null);
+  const matchRef = useRef(null);
 
   useEffect(() => {
     if (!getDisplayName()) navigate("/");
   }, [navigate]);
 
-  /* ---------- staff session ---------- */
+  /* Staff session */
 
   useEffect(() => {
     let active = true;
 
-    const refreshStaffLease = () =>
-      api
-        .adminSession()
-        .then((session) => {
-          if (active) {
-            setStaffRole(session.role);
-            localStorage.setItem("rc_staff_role", session.role);
-          }
-        })
-        .catch(() => { });
+    const refreshStaffLease = async () => {
+      try {
+        const session = await api.adminSession();
+        if (!active) return;
+
+        setStaffRole(session.role);
+        localStorage.setItem("rc_staff_role", session.role);
+      } catch {
+        // Staff status is optional.
+      }
+    };
 
     refreshStaffLease();
-
-    const intervalId = window.setInterval(refreshStaffLease, 30000);
+    const interval = window.setInterval(refreshStaffLease, 30000);
 
     return () => {
       active = false;
-      window.clearInterval(intervalId);
+      window.clearInterval(interval);
     };
   }, []);
 
-  /* ---------- rooms ---------- */
+  /* Room data */
 
-  const refresh = useCallback(() => {
-    Promise.all([api.listRooms(), api.listMyRooms(getFingerprint())])
-      .then(([allRooms, ownedRooms]) => {
-        setRooms(allRooms);
-        setMyRooms(ownedRooms);
-        setLoadFailed(false);
-      })
-      .catch(() => setLoadFailed(true))
-      .finally(() => setLoading(false));
+  const refresh = useCallback(async () => {
+    try {
+      const [allRooms, ownedRooms] = await Promise.all([
+        api.listRooms(),
+        api.listMyRooms(getFingerprint()),
+      ]);
+
+      setRooms(allRooms);
+      setMyRooms(ownedRooms);
+      setLoadFailed(false);
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     refresh();
 
-    // Skip polling while the tab is in the background, and catch up the
-    // moment the person comes back.
     const interval = window.setInterval(() => {
       if (!document.hidden) refresh();
     }, 5000);
@@ -256,37 +228,38 @@ export default function Rooms() {
     };
   }, [refresh]);
 
-  /* ---------- people waiting (same source as the landing page) ---------- */
+  /* Waiting statistics */
 
   useEffect(() => {
-    let mounted = true;
+    let active = true;
 
-    async function refreshWaiting() {
+    const refreshWaiting = async () => {
       try {
         const stats = await api.stats();
-
-        if (mounted) setWaitingCount(stats.waiting);
+        if (active) setWaitingCount(stats.waiting);
       } catch {
-        // Optional UI.
+        // Statistics are optional.
       }
-    }
+    };
 
     refreshWaiting();
-
     const interval = window.setInterval(refreshWaiting, 6000);
 
     return () => {
-      mounted = false;
+      active = false;
       window.clearInterval(interval);
     };
   }, []);
 
-  /* ---------- actions ---------- */
+  /* Actions */
 
   async function logout() {
-    if (staffRole) await api.adminLogout().catch(() => { });
+    if (staffRole) {
+      await api.adminLogout().catch(() => {});
+    }
 
     clearLocalSession();
+    localStorage.removeItem("rc_staff_role");
     setStaffRole(null);
     setName("");
     navigate("/");
@@ -297,7 +270,7 @@ export default function Rooms() {
       setName(next);
       setDisplayName(next);
       setNameEditorOpen(false);
-      push(`Name changed to “${next}”`, "success");
+      push(`Name changed to "${next}"`, "success");
     },
     [push]
   );
@@ -311,9 +284,10 @@ export default function Rooms() {
         fingerprint: getFingerprint(),
       });
 
+      setModalOpen(false);
       navigate(`/rooms/${room._id}`, { state: { room } });
-    } catch (err) {
-      push(err?.message || "Could not create the room.", "error");
+    } catch (error) {
+      push(error?.message || "Could not create the room.", "error");
     } finally {
       setCreating(false);
     }
@@ -321,10 +295,11 @@ export default function Rooms() {
 
   async function submitRename(nextName) {
     const room = renameTarget;
-
     if (!room) return;
 
-    if (!nextName || nextName === room.name) {
+    const clean = nextName.trim();
+
+    if (!clean || clean === room.name) {
       setRenameTarget(null);
       return;
     }
@@ -333,15 +308,15 @@ export default function Rooms() {
 
     try {
       await api.updateRoom(room._id, {
-        name: nextName,
+        name: clean,
         fingerprint: getFingerprint(),
       });
 
       setRenameTarget(null);
-      refresh();
-      push("Room renamed", "success");
-    } catch (err) {
-      push(err?.message || "Could not rename the room.", "error");
+      await refresh();
+      push("Room renamed successfully.", "success");
+    } catch (error) {
+      push(error?.message || "Could not rename the room.", "error");
     } finally {
       setRoomBusy(false);
     }
@@ -349,19 +324,17 @@ export default function Rooms() {
 
   async function confirmDelete() {
     const room = deleteTarget;
-
     if (!room) return;
 
     setRoomBusy(true);
 
     try {
       await api.deleteRoom(room._id, getFingerprint());
-
       setDeleteTarget(null);
-      refresh();
-      push("Room deleted", "success");
-    } catch (err) {
-      push(err?.message || "Could not delete the room.", "error");
+      await refresh();
+      push("Room deleted.", "success");
+    } catch (error) {
+      push(error?.message || "Could not delete the room.", "error");
     } finally {
       setRoomBusy(false);
     }
@@ -382,10 +355,15 @@ export default function Rooms() {
       .map((item) => item.trim())
       .filter(Boolean);
 
-    if (current.map((item) => item.toLowerCase()).includes(value)) return;
+    if (current.some((item) => item.toLowerCase() === value)) return;
 
     setInterests([...current, value].slice(0, 5).join(", "));
   }
+
+  const openRoom = useCallback(
+    (room) => navigate(`/rooms/${room._id}`, { state: { room } }),
+    [navigate]
+  );
 
   const go = useCallback(
     (path) => {
@@ -395,14 +373,26 @@ export default function Rooms() {
     [navigate]
   );
 
-  const openRoom = useCallback(
-    (room) => navigate(`/rooms/${room._id}`, { state: { room } }),
-    [navigate]
+  function scrollToRooms() {
+    roomsRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
+
+  function scrollToMatch() {
+    matchRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }
+
+  /* Derived state */
+
+  const interestTags = useMemo(
+    () => parseInterests(interests),
+    [interests]
   );
-
-  /* ---------- derived ---------- */
-
-  const interestTags = useMemo(() => parseInterests(interests), [interests]);
 
   const visibleRooms = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -416,47 +406,47 @@ export default function Rooms() {
     );
   }, [rooms, query]);
 
-  const firstName = (name || "").trim().split(" ")[0] || "there";
+  const firstName = (name || "").trim().split(/\s+/)[0] || "there";
 
   const subline =
     waitingCount > 0
-      ? `${waitingCount} ${waitingCount === 1 ? "person is" : "people are"
-      } looking for a conversation right now.`
-      : "Start a call, or drop into a room where people are talking.";
+      ? `${waitingCount} ${
+          waitingCount === 1 ? "person is" : "people are"
+        } looking for a conversation right now.`
+      : "Meet someone new, discover a group, and start a conversation.";
 
-  const optionsSummary = `${preference.charAt(0).toUpperCase() + preference.slice(1)
-    }${interestTags.length ? ` · ${interestTags.join(", ")}` : ""}`;
-
-  /* ---------------------------------------------------------------- */
-  /*  Render                                                           */
-  /* ---------------------------------------------------------------- */
+  const optionsSummary = `${
+    preference.charAt(0).toUpperCase() + preference.slice(1)
+  }${interestTags.length ? ` · ${interestTags.join(", ")}` : ""}`;
 
   return (
-    <div className="min-h-screen w-full min-w-0 overflow-x-clip">
-      {/* HEADER */}
-      <header className="sticky top-0 z-40 w-full border-b border-white/10 bg-ink/80 backdrop-blur-xl">
-        <div className="mx-auto flex min-h-[64px] w-full max-w-[1440px] min-w-0 items-center justify-between gap-3 px-3 sm:px-5 md:px-8">
-          {/* BRAND */}
+    <div className="min-h-screen w-full min-w-0 overflow-x-clip bg-ink text-white">
+      {/* Header */}
+
+      <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-ink/85 backdrop-blur-2xl">
+        <div className="mx-auto flex min-h-[66px] w-full max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={() => navigate("/rooms")}
-            className="flex shrink-0 items-center gap-2 font-display text-lg font-bold tracking-tight text-white sm:text-xl"
-            aria-label="RandomConnect, go to rooms"
+            aria-label="RandomConnect home"
+            className="flex shrink-0 items-center gap-2 font-display text-lg font-bold tracking-tight sm:text-xl"
           >
-            <BrandMark className="h-7 w-7" />
+            <BrandMark className="h-8 w-8" />
             <span>
               random<span className="text-signal">connect</span>
             </span>
           </button>
 
-          {/* DESKTOP NAV */}
-          <div className="hidden min-w-0 items-center gap-2 lg:flex">
-            <NameChip name={name} onClick={() => setNameEditorOpen(true)} />
+          <div className="hidden items-center gap-2 lg:flex">
+            <NameChip
+              name={name}
+              onClick={() => setNameEditorOpen(true)}
+            />
 
             <button
               type="button"
               onClick={() => navigate("/profile")}
-              className="ui-button ui-button-muted shrink-0 border-violet/30 px-3 text-xs text-violet"
+              className="ui-button ui-button-muted px-3 text-xs"
             >
               Profile
             </button>
@@ -464,7 +454,7 @@ export default function Rooms() {
             <button
               type="button"
               onClick={() => navigate("/guide")}
-              className="ui-button ui-button-muted shrink-0 px-3 text-xs"
+              className="ui-button ui-button-muted px-3 text-xs"
             >
               Guide
             </button>
@@ -472,7 +462,7 @@ export default function Rooms() {
             <button
               type="button"
               onClick={() => setLogoutOpen(true)}
-              className="ui-button ui-button-danger shrink-0 px-3 text-xs"
+              className="ui-button ui-button-danger px-3 text-xs"
             >
               Log out
             </button>
@@ -480,7 +470,6 @@ export default function Rooms() {
             <LiveIndicator count={waitingCount} />
           </div>
 
-          {/* MOBILE HEADER */}
           <div className="flex items-center gap-2 lg:hidden">
             <LiveIndicator count={waitingCount} compact />
 
@@ -489,86 +478,135 @@ export default function Rooms() {
               onClick={() => setMenuOpen(true)}
               aria-label="Open navigation menu"
               aria-expanded={menuOpen}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-panel/80 text-white shadow-lg transition hover:border-signal/40 hover:bg-panel2"
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-panel text-white transition hover:border-signal/40"
             >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                aria-hidden="true"
-              >
-                <path d="M4 7h16M4 12h16M4 17h16" />
-              </svg>
+              <MenuIcon />
             </button>
           </div>
         </div>
       </header>
 
-      {/* MAIN
-          On phones the order is: greeting, 1-to-1, rooms, invite.
-          On desktop the 1-to-1 card and the invite card sit together in a
-          sticky left column. The wrapper uses `contents` on small screens so
-          its children can be reordered against the rooms list. */}
-      <main className="mx-auto grid w-full max-w-[1440px] min-w-0 grid-cols-1 gap-4 px-3 py-4 pb-20 sm:gap-6 sm:px-5 sm:py-6 lg:grid-cols-[340px_minmax(0,1fr)] lg:px-8">
-        {/* GREETING */}
-        <section className="relative min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-panel/70 px-4 py-4 sm:px-6 sm:py-5 lg:col-span-2">
+      {/* Main content */}
+
+      <main className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-5 px-3 py-4 pb-28 sm:gap-6 sm:px-5 sm:py-6 sm:pb-28 lg:grid-cols-[340px_minmax(0,1fr)] lg:px-8 lg:pb-10">
+        {/* Welcome hero */}
+
+        <section className="relative isolate overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#172b42] via-[#111d31] to-[#17152f] p-5 shadow-2xl sm:p-7 lg:col-span-2 lg:p-9">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-signal/10 blur-3xl"
+            className="pointer-events-none absolute -right-20 -top-24 -z-10 h-72 w-72 rounded-full bg-signal/15 blur-3xl"
           />
 
-          <div className="relative flex items-center gap-3 sm:gap-4">
-            <Avatar name={name} size="lg" />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -bottom-32 left-1/3 -z-10 h-64 w-64 rounded-full bg-violet/15 blur-3xl"
+          />
 
+          <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
             <div className="min-w-0">
-              <h1 className="min-w-0 max-w-full break-words font-display text-xl font-bold leading-tight text-white sm:text-2xl">
-                {greeting()}, {firstName}
+              <div className="mb-4 flex items-center gap-3">
+                <Avatar name={name} size="lg" />
+
+                <div className="min-w-0">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-signal2 sm:text-xs">
+                    YOUR COMMUNITY, YOUR MOMENT
+                  </p>
+                  <p className="mt-1 text-sm text-white/70">
+                    {greeting()}, {firstName}
+                  </p>
+                </div>
+              </div>
+
+              <h1 className="max-w-2xl break-words font-display text-3xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-5xl">
+                A stranger today.
+                <span className="block bg-gradient-to-r from-signal to-violet bg-clip-text text-transparent">
+                  A great conversation next.
+                </span>
               </h1>
 
-              <p className="mt-0.5 text-sm leading-snug text-mist">
-                {subline}
+              <p className="mt-4 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">
+                {subline} Find your people, share your interests, and make
+                the internet feel a little smaller.
               </p>
 
               {staffRole && (
-                <p className="mt-1.5 inline-block rounded-full border border-violet/30 bg-violet/10 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-violet">
+                <span className="mt-4 inline-flex rounded-full border border-violet/30 bg-violet/10 px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-violet">
                   {staffRole}
-                </p>
+                </span>
               )}
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={scrollToMatch}
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-signal px-5 py-3 text-sm font-bold text-ink shadow-lg shadow-signal/20 transition hover:-translate-y-0.5 hover:brightness-110"
+                >
+                  <ChatIcon />
+                  Meet Someone
+                  <span aria-hidden="true">→</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={scrollToRooms}
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white transition hover:border-violet/50 hover:bg-white/[0.08]"
+                >
+                  Explore Rooms
+                  <span aria-hidden="true">↗</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setNameEditorOpen(true)}
+                  className="hidden items-center gap-2 rounded-xl px-3 py-3 text-sm text-slate-300 transition hover:text-white sm:inline-flex"
+                >
+                  <PencilIcon />
+                  Edit name
+                </button>
+              </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setNameEditorOpen(true)}
-              className="ui-button ui-button-muted ml-auto hidden shrink-0 px-3 text-xs sm:inline-flex"
-            >
-              Change name
-            </button>
+            <div className="hidden shrink-0 md:block">
+              <HeroArtwork />
+            </div>
+          </div>
+
+          <div className="relative mt-7 grid grid-cols-3 gap-2 border-t border-white/10 pt-5 sm:mt-8 sm:gap-4 sm:pt-6">
+            <StatItem
+              value={waitingCount == null ? "—" : waitingCount}
+              label="Waiting to talk"
+            />
+            <StatItem
+              value={loading ? "…" : rooms.length}
+              label="Open rooms"
+            />
+            <StatItem value={myRooms.length} label="Your groups" />
           </div>
         </section>
 
-        {/* TELEGRAM DROP */}
-        <div className="order-0 min-w-0 lg:col-span-2">
+        {/* Telegram drop */}
+
+        <div className="min-w-0 lg:col-span-2">
           <TelegramDrop />
         </div>
 
-        <div className="contents lg:sticky lg:top-20 lg:order-1 lg:block lg:h-fit lg:space-y-5 lg:self-start">
-          {/* 1-TO-1 */}
-          <aside className="order-1 min-w-0 rounded-2xl border border-white/10 bg-panel/85 p-4 shadow-xl backdrop-blur-xl sm:p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="mb-1 font-mono text-xs uppercase tracking-widest text-signal2">
-                  1-to-1
-                </p>
+        {/* Sidebar */}
 
-                <h2 className="font-display text-xl font-bold text-white">
+        <div className="min-w-0 space-y-5 lg:sticky lg:top-24 lg:row-start-3 lg:self-start">
+          <aside
+            ref={matchRef}
+            className="scroll-mt-24 rounded-2xl border border-white/10 bg-panel p-4 shadow-xl sm:p-6"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="mb-1 font-mono text-xs uppercase tracking-widest text-signal2">
+                  PRIVATE MATCH
+                </p>
+                <h2 className="font-display text-xl font-bold">
                   Talk to one stranger
                 </h2>
-
                 <p className="mt-1 text-sm text-mist">
-                  Private call · instant match
+                  One-to-one chat · instant match
                 </p>
               </div>
 
@@ -577,70 +615,67 @@ export default function Rooms() {
                 onClick={() => setOptionsOpen((value) => !value)}
                 aria-expanded={optionsOpen}
                 aria-controls="one-to-one-options"
-                className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-panel2 px-3 py-1.5 text-xs font-medium text-mist transition hover:text-white lg:hidden"
+                className="rounded-full border border-white/10 bg-panel2 px-3 py-2 text-xs text-mist transition hover:text-white lg:hidden"
               >
-                Options
-                <svg
-                  viewBox="0 0 24 24"
-                  className={`h-3.5 w-3.5 transition-transform ${optionsOpen ? "rotate-180" : ""
-                    }`}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
+                {optionsOpen ? "Hide options" : "Options"}
               </button>
             </div>
 
-            {/* Options: always open on desktop, collapsible on phones */}
             <div
               id="one-to-one-options"
-              className={`${optionsOpen ? "block" : "hidden"} mt-5 lg:block`}
+              className={`mt-5 ${
+                optionsOpen ? "block" : "hidden"
+              } lg:block`}
             >
-              <label className="mb-1.5 block font-mono text-xs uppercase tracking-wide text-mist">
-                Preference
+              <label className="mb-2 block font-mono text-xs uppercase tracking-wide text-mist">
+                Match preference
               </label>
 
-              <div className="mb-4 grid w-full grid-cols-3 gap-1.5 sm:gap-2">
+              <div className="mb-4 grid grid-cols-3 gap-2">
                 {PREFERENCES.map((option) => (
                   <button
                     key={option}
                     type="button"
                     aria-pressed={preference === option}
                     onClick={() => setPreference(option)}
-                    className={`min-w-0 rounded-lg border py-2 text-xs capitalize transition sm:text-sm ${preference === option
-                        ? "border-signal bg-signal/15 text-signal2"
-                        : "border-white/10 bg-panel2 text-mist hover:border-white/20 hover:text-white"
-                      }`}
+                    className={`rounded-lg border py-2.5 text-xs capitalize transition sm:text-sm ${
+                      preference === option
+                        ? "border-signal bg-signal/10 text-signal2"
+                        : "border-white/10 bg-panel2 text-mist hover:text-white"
+                    }`}
                   >
                     {option}
                   </button>
                 ))}
               </div>
 
+              <label
+                htmlFor="rc-interests"
+                className="mb-2 block font-mono text-xs uppercase tracking-wide text-mist"
+              >
+                Your interests
+              </label>
+
               <input
+                id="rc-interests"
                 value={interests}
                 onChange={(event) => setInterests(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") start1to1();
                 }}
-                placeholder="Interests (optional)"
+                placeholder="Music, travel, movies..."
                 aria-label="Interests, optional"
                 enterKeyHint="go"
-                className="w-full min-w-0 rounded-lg border border-white/10 bg-panel2 px-3 py-2.5 text-sm text-white outline-none placeholder:text-mist/50 focus:border-signal/50"
+                className="w-full rounded-xl border border-white/10 bg-panel2 px-3 py-3 text-sm text-white outline-none placeholder:text-mist/50 focus:border-signal/50"
               />
 
-              <div className="mb-4 mt-2 flex flex-wrap gap-1.5">
+              <div className="mt-3 flex flex-wrap gap-2">
                 {QUICK_INTERESTS.map((tag) => (
                   <button
                     key={tag}
                     type="button"
                     onClick={() => addInterest(tag)}
-                    className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-mist transition hover:border-signal/40 hover:text-signal2"
+                    className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-mist transition hover:border-signal/40 hover:text-signal2"
                   >
                     + {tag}
                   </button>
@@ -648,7 +683,6 @@ export default function Rooms() {
               </div>
             </div>
 
-            {/* What the collapsed options currently say */}
             {!optionsOpen && (
               <p className="mt-3 truncate text-xs text-mist lg:hidden">
                 {optionsSummary}
@@ -658,64 +692,69 @@ export default function Rooms() {
             <button
               type="button"
               onClick={start1to1}
-              className="ui-button ui-button-primary mt-4 w-full shadow-lg shadow-signal/15 lg:mt-0"
+              className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-signal px-4 py-3 text-sm font-bold text-ink shadow-lg shadow-signal/10 transition hover:-translate-y-0.5 hover:brightness-110"
             >
-              Start 1-to-1 call
+              <ChatIcon />
+              Meet Someone Now
             </button>
+
+            <p className="mt-3 text-center text-xs text-mist">
+              A new conversation is one click away.
+            </p>
           </aside>
 
-          {/* INVITE */}
-          <div className="order-3 min-w-0">
-            <PremiumReferralCard />
-          </div>
+          <PremiumReferralCard />
         </div>
 
-        {/* GROUP ROOMS */}
-        <section className="order-2 min-w-0 lg:order-2">
+        {/* Rooms */}
+
+        <section
+          ref={roomsRef}
+          className="min-w-0 scroll-mt-24 lg:row-start-3"
+        >
           {loadFailed && !loading && (
             <div
               role="status"
-              className="mb-4 flex items-center gap-2 rounded-xl border border-coral/30 bg-coral/10 px-3 py-2 text-xs text-coral"
+              className="mb-4 rounded-xl border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-200"
             >
-              <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-coral" />
               Can't reach the rooms right now. Retrying automatically…
             </div>
           )}
 
           {myRooms.length > 0 && (
             <div className="mb-8 min-w-0">
-              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div className="min-w-0">
+              <div className="mb-4 flex items-end justify-between gap-3">
+                <div>
                   <p className="mb-1 font-mono text-xs uppercase tracking-widest text-violet">
-                    my groups
+                    YOUR SPACE
                   </p>
-
-                  <h2 className="font-display text-xl font-bold text-white">
-                    Your rooms · {myRooms.length}/2
+                  <h2 className="font-display text-xl font-bold">
+                    Your rooms
+                    <span className="ml-2 text-sm font-normal text-mist">
+                      {myRooms.length}/2
+                    </span>
                   </h2>
                 </div>
-
-                <span className="text-xs text-mist">rename or delete</span>
+                <span className="text-xs text-mist">Manage your groups</span>
               </div>
 
               <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
                 {myRooms.map((room) => (
-                  <div key={room._id} className="min-w-0 rounded-2xl">
+                  <div key={room._id} className="min-w-0">
                     <RoomCard room={room} onJoin={openRoom} />
 
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => setRenameTarget(room)}
-                        className="min-w-0 rounded-lg border border-white/10 bg-panel2 px-2 py-2.5 text-xs text-white transition hover:border-signal/50"
+                        className="rounded-xl border border-white/10 bg-panel2 px-3 py-2.5 text-xs text-white transition hover:border-signal/40"
                       >
                         Edit name
                       </button>
-
                       <button
                         type="button"
                         onClick={() => setDeleteTarget(room)}
-                        className="min-w-0 rounded-lg border border-coral/30 bg-coral/10 px-2 py-2.5 text-xs text-coral transition hover:bg-coral/20"
+                        className="rounded-xl border border-rose-400/25 bg-rose-400/5 px-3 py-2.5 text-xs text-rose-300 transition hover:bg-rose-400/10"
                       >
                         Delete
                       </button>
@@ -726,19 +765,22 @@ export default function Rooms() {
             </div>
           )}
 
-          {/* GROUP HEADER */}
-          <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
               <p className="mb-1 font-mono text-xs uppercase tracking-widest text-signal2">
-                group rooms
-                {!loading && rooms.length > 0 && (
-                  <span className="ml-2 text-mist">· {rooms.length} open</span>
+                THE COMMUNITY
+                {!loading && (
+                  <span className="ml-2 text-mist">
+                    · {rooms.length} rooms
+                  </span>
                 )}
               </p>
-
-              <h2 className="font-display text-xl font-bold leading-tight text-white sm:text-2xl">
-                Where people are actually talking
+              <h2 className="font-display text-2xl font-bold tracking-tight">
+                Explore group rooms
               </h2>
+              <p className="mt-1 text-sm text-mist">
+                Find a conversation that feels like you.
+              </p>
             </div>
 
             <button
@@ -747,47 +789,33 @@ export default function Rooms() {
               disabled={myRooms.length >= 2}
               title={
                 myRooms.length >= 2
-                  ? "Delete or edit an existing group before creating another"
+                  ? "Delete a group before creating another"
                   : "Start a group room"
               }
-              className="w-full shrink-0 rounded-xl border border-violet/40 bg-violet/15 px-4 py-3 text-sm font-semibold text-violet transition hover:bg-violet/25 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:py-2.5"
+              className="flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-violet/40 bg-violet/10 px-4 py-2.5 text-sm font-semibold text-violet transition hover:bg-violet/20 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
             >
-              {myRooms.length >= 2 ? "2 groups created" : "+ Start a room"}
+              <span className="text-lg">+</span>
+              {myRooms.length >= 2 ? "2 groups created" : "Create a room"}
             </button>
           </div>
 
-          {/* SEARCH (only worth showing once the list gets long) */}
           {rooms.length >= 4 && (
             <div className="relative mb-4">
-              <svg
-                viewBox="0 0 24 24"
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mist"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                aria-hidden="true"
-              >
-                <circle cx="11" cy="11" r="6.5" />
-                <path d="M20 20l-4-4" />
-              </svg>
-
+              <SearchIcon />
               <input
-                type="text"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search rooms"
+                placeholder="Search rooms by name or topic"
                 aria-label="Search rooms"
                 enterKeyHint="search"
-                className="w-full rounded-xl border border-white/10 bg-panel2 py-2.5 pl-9 pr-10 text-sm text-white outline-none placeholder:text-mist/50 focus:border-signal/50"
+                className="w-full rounded-xl border border-white/10 bg-panel py-3 pl-10 pr-10 text-sm text-white outline-none placeholder:text-mist/50 focus:border-signal/50"
               />
-
               {query && (
                 <button
                   type="button"
                   onClick={() => setQuery("")}
                   aria-label="Clear search"
-                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-mist hover:text-white"
+                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-mist hover:text-white"
                 >
                   ×
                 </button>
@@ -795,49 +823,27 @@ export default function Rooms() {
             </div>
           )}
 
-          {/* ROOMS */}
           {loading ? (
-            <div
-              className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2"
-              aria-label="Loading rooms"
-            >
+            <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
               {[0, 1, 2, 3].map((item) => (
                 <RoomSkeleton key={item} />
               ))}
             </div>
           ) : rooms.length === 0 ? (
-            <div className="w-full min-w-0 rounded-2xl border border-dashed border-white/10 bg-panel/40 p-6 text-center sm:p-10">
-              <p className="font-display text-lg font-semibold text-white">
-                It's quiet in here
-              </p>
-
-              <p className="mb-4 mt-1 text-sm text-mist">
-                No rooms yet. Start one and people will find you.
-              </p>
-
-              <button
-                type="button"
-                onClick={() => setModalOpen(true)}
-                disabled={myRooms.length >= 2}
-                className="w-full rounded-xl bg-signal px-4 py-3 text-sm font-semibold text-ink disabled:opacity-40 sm:w-auto"
-              >
-                + Start a room
-              </button>
-            </div>
+            <EmptyState
+              title="It's quiet in here"
+              description="Be the first to start a room. Someone might be looking for exactly the same conversation."
+              action="Create the first room"
+              onAction={() => setModalOpen(true)}
+              disabled={myRooms.length >= 2}
+            />
           ) : visibleRooms.length === 0 ? (
-            <div className="w-full min-w-0 rounded-2xl border border-dashed border-white/10 bg-panel/40 p-6 text-center sm:p-10">
-              <p className="text-sm text-mist">
-                No rooms match “{query.trim()}”.
-              </p>
-
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className="mt-3 text-sm font-medium text-signal2 underline underline-offset-4"
-              >
-                Clear search
-              </button>
-            </div>
+            <EmptyState
+              title="No rooms found"
+              description={`Nothing matches "${query.trim()}". Try another search.`}
+              action="Clear search"
+              onAction={() => setQuery("")}
+            />
           ) : (
             <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
               {visibleRooms.map((room) => (
@@ -850,16 +856,44 @@ export default function Rooms() {
         </section>
       </main>
 
-      {/* OVERLAYS
-          Everything below lives outside <header>. The header has a
-          backdrop blur, and a blurred ancestor traps position:fixed children
-          inside itself, which is why the old menu backdrop only covered the
-          header bar. */}
+      {/* Mobile bottom navigation */}
+
+      <nav
+        aria-label="Mobile navigation"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0b1220]/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl lg:hidden"
+      >
+        <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
+          <MobileNavItem
+            label="Home"
+            icon="home"
+            active
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          />
+          <MobileNavItem
+            label="Meet"
+            icon="chat"
+            onClick={scrollToMatch}
+          />
+          <MobileNavItem
+            label="Rooms"
+            icon="rooms"
+            onClick={scrollToRooms}
+          />
+          <MobileNavItem
+            label="Profile"
+            icon="user"
+            onClick={() => navigate("/profile")}
+          />
+        </div>
+      </nav>
+
+      {/* Overlays */}
+
       {menuOpen && (
         <MobileMenu
           name={name}
           staffRole={staffRole}
-          onClose={closeMenu}
+          onClose={() => setMenuOpen(false)}
           onNavigate={go}
           onEditName={() => {
             setMenuOpen(false);
@@ -876,7 +910,7 @@ export default function Rooms() {
         <NameEditorModal
           currentName={name}
           onSave={saveName}
-          onClose={closeNameEditor}
+          onClose={() => setNameEditorOpen(false)}
         />
       )}
 
@@ -885,7 +919,7 @@ export default function Rooms() {
           room={renameTarget}
           busy={roomBusy}
           onSubmit={submitRename}
-          onClose={closeRename}
+          onClose={() => setRenameTarget(null)}
         />
       )}
 
@@ -894,11 +928,16 @@ export default function Rooms() {
           room={deleteTarget}
           busy={roomBusy}
           onConfirm={confirmDelete}
-          onClose={closeDelete}
+          onClose={() => setDeleteTarget(null)}
         />
       )}
 
-      {logoutOpen && <LogoutModal onClose={closeLogout} onLogout={logout} />}
+      {logoutOpen && (
+        <LogoutModal
+          onClose={() => setLogoutOpen(false)}
+          onLogout={logout}
+        />
+      )}
 
       <CreateRoomModal
         open={modalOpen}
@@ -910,25 +949,25 @@ export default function Rooms() {
       <ToastStack toasts={toasts} />
 
       <style>{`
-        @keyframes rmSheetUp {
-          from { opacity: 0; transform: translateY(24px); }
+        html {
+          scroll-behavior: smooth;
+        }
+
+        @keyframes rcSheetUp {
+          from { opacity: 0; transform: translateY(20px); }
           to { opacity: 1; transform: translateY(0); }
         }
 
-        @keyframes rmSlideIn {
-          from { opacity: 0; transform: translateX(28px); }
+        @keyframes rcSlideIn {
+          from { opacity: 0; transform: translateX(24px); }
           to { opacity: 1; transform: translateX(0); }
-        }
-
-        @keyframes rmToastIn {
-          from { opacity: 0; transform: translateY(10px) scale(0.98); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
         @media (prefers-reduced-motion: reduce) {
           *,
           *::before,
           *::after {
+            scroll-behavior: auto !important;
             animation-duration: 0.01ms !important;
             animation-iteration-count: 1 !important;
             transition-duration: 0.01ms !important;
@@ -939,18 +978,15 @@ export default function Rooms() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Brand + avatar + name                                              */
-/* ------------------------------------------------------------------ */
+/* ------------------------------ UI components ------------------------------ */
 
-function BrandMark({ className = "h-7 w-7" }) {
+function BrandMark({ className = "h-8 w-8" }) {
   return (
     <svg
       viewBox="0 0 40 40"
       fill="none"
       className={className}
       aria-hidden="true"
-      focusable="false"
     >
       <circle
         cx="15"
@@ -968,17 +1004,11 @@ function BrandMark({ className = "h-7 w-7" }) {
         strokeWidth="2.4"
         className="text-violet"
       />
-      <circle cx="20" cy="20" r="2.4" fill="currentColor" className="text-white" />
+      <circle cx="20" cy="20" r="2.4" fill="white" />
     </svg>
   );
 }
 
-/*
-  The round letter badge. Fixes over the old one:
-  - emoji-safe first letter (charAt(0) split emoji into a broken glyph)
-  - colour comes from the name, matching the landing page
-  - four sizes, so it can be reused in the header, menu and editor
-*/
 function Avatar({ name, size = "md" }) {
   const sizes = {
     sm: "h-7 w-7 text-xs",
@@ -992,10 +1022,13 @@ function Avatar({ name, size = "md" }) {
   return (
     <span
       aria-hidden="true"
-      className={`flex shrink-0 select-none items-center justify-center rounded-full font-bold text-[#06101a] transition-colors duration-200 ${sizes[size] || sizes.md
-        }`}
+      className={`flex shrink-0 select-none items-center justify-center rounded-full font-bold text-[#06101a] ${
+        sizes[size] || sizes.md
+      }`}
       style={{
-        backgroundColor: clean ? colorForName(clean) : "rgba(255,255,255,.14)",
+        backgroundColor: clean
+          ? colorForName(clean)
+          : "rgba(255,255,255,.14)",
       }}
     >
       {initialOf(clean)}
@@ -1003,7 +1036,7 @@ function Avatar({ name, size = "md" }) {
   );
 }
 
-function PencilIcon({ className = "h-3.5 w-3.5" }) {
+function PencilIcon({ className = "h-4 w-4" }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -1021,21 +1054,54 @@ function PencilIcon({ className = "h-3.5 w-3.5" }) {
   );
 }
 
-function NameChip({ name, onClick }) {
+function ChatIcon() {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title="Change your name"
-      aria-label={`Signed in as ${name || "Guest"}. Change your name`}
-      className="group flex min-w-0 max-w-[14rem] items-center gap-2 rounded-full border border-white/10 bg-panel py-1 pl-1 pr-3 text-sm text-white/90 transition hover:border-signal/40"
+    <svg
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
     >
-      <Avatar name={name} size="sm" />
+      <path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l-1.5 2v-5A7.5 7.5 0 1 1 20 11.5Z" />
+      <path d="M8 11h8M8 14h5" />
+    </svg>
+  );
+}
 
-      <span className="min-w-0 truncate">{name || "Guest"}</span>
+function MenuIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
 
-      <PencilIcon className="h-3.5 w-3.5 shrink-0 text-mist transition group-hover:text-signal2" />
-    </button>
+function SearchIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mist"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m20 20-4-4" />
+    </svg>
   );
 }
 
@@ -1044,20 +1110,170 @@ function LiveIndicator({ count, compact = false }) {
 
   return (
     <span
-      className={`flex shrink-0 items-center gap-1.5 font-mono text-xs font-medium text-signal2 ${compact
-          ? "rounded-full border border-signal/20 bg-signal/5 px-2.5 py-1.5"
+      className={`flex shrink-0 items-center gap-1.5 font-mono text-xs text-signal2 ${
+        compact
+          ? "rounded-full border border-signal/20 bg-signal/5 px-2.5 py-2"
           : ""
-        }`}
+      }`}
     >
-      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-signal sm:h-2 sm:w-2" />
+      <span className="h-2 w-2 animate-pulse rounded-full bg-signal" />
       {label}
     </span>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Modal shell (bottom sheet on phones, dialog on larger screens)     */
-/* ------------------------------------------------------------------ */
+function NameChip({ name, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Signed in as ${name || "Guest"}. Change your name`}
+      className="flex max-w-[14rem] min-w-0 items-center gap-2 rounded-full border border-white/10 bg-panel py-1 pl-1 pr-3 text-sm text-white transition hover:border-signal/40"
+    >
+      <Avatar name={name} size="sm" />
+      <span className="truncate">{name || "Guest"}</span>
+      <PencilIcon className="h-3.5 w-3.5 shrink-0 text-mist" />
+    </button>
+  );
+}
+
+function StatItem({ value, label }) {
+  return (
+    <div className="min-w-0">
+      <p className="font-display text-xl font-bold text-white sm:text-2xl">
+        {value}
+      </p>
+      <p className="mt-1 text-[10px] leading-snug text-slate-400 sm:text-xs">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function HeroArtwork() {
+  return (
+    <div
+      aria-hidden="true"
+      className="relative flex h-48 w-48 items-center justify-center"
+    >
+      <div className="absolute h-44 w-44 rounded-full border border-white/10" />
+      <div className="absolute h-32 w-32 rounded-full border border-violet/30" />
+      <div className="absolute h-20 w-20 rounded-full bg-signal/10 blur-xl" />
+
+      <div className="absolute left-5 top-8 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-[#21364d] text-xl shadow-xl">
+        ✦
+      </div>
+      <div className="absolute right-5 top-12 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-[#30284f] text-xl shadow-xl">
+        ◉
+      </div>
+      <div className="absolute bottom-6 left-10 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-[#263b49] text-xl shadow-xl">
+        ♡
+      </div>
+      <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl border border-signal/30 bg-[#142a3d] shadow-2xl shadow-signal/10">
+        <BrandMark className="h-12 w-12" />
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({
+  title,
+  description,
+  action,
+  onAction,
+  disabled = false,
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-white/15 bg-panel/50 px-5 py-10 text-center sm:px-8">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-panel2 text-2xl">
+        ◌
+      </div>
+      <h3 className="mt-4 font-display text-xl font-semibold text-white">
+        {title}
+      </h3>
+      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-mist">
+        {description}
+      </p>
+      <button
+        type="button"
+        onClick={onAction}
+        disabled={disabled}
+        className="mt-5 rounded-xl bg-signal px-5 py-3 text-sm font-semibold text-ink transition hover:brightness-110 disabled:opacity-40"
+      >
+        {action}
+      </button>
+    </div>
+  );
+}
+
+function RoomSkeleton() {
+  return (
+    <div
+      className="animate-pulse rounded-2xl border border-white/5 bg-panel/60 p-4"
+      aria-hidden="true"
+    >
+      <div className="h-3 w-24 rounded bg-white/10" />
+      <div className="mt-3 h-5 w-2/3 rounded bg-white/10" />
+      <div className="mt-2 h-3 w-full rounded bg-white/5" />
+      <div className="mt-5 h-3 w-28 rounded bg-white/10" />
+    </div>
+  );
+}
+
+function MobileNavItem({ label, icon, active = false, onClick }) {
+  const paths = {
+    home: <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z" />,
+    chat: (
+      <>
+        <path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l-1.5 2v-5A7.5 7.5 0 1 1 20 11.5Z" />
+        <path d="M8 11h8" />
+      </>
+    ),
+    rooms: (
+      <>
+        <rect x="3" y="4" width="8" height="7" rx="2" />
+        <rect x="13" y="4" width="8" height="7" rx="2" />
+        <rect x="3" y="13" width="8" height="7" rx="2" />
+        <rect x="13" y="13" width="8" height="7" rx="2" />
+      </>
+    ),
+    user: (
+      <>
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 21a8 8 0 0 1 16 0" />
+      </>
+    ),
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[10px] transition ${
+        active
+          ? "bg-signal/10 text-signal2"
+          : "text-slate-400 hover:bg-white/5 hover:text-white"
+      }`}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {paths[icon]}
+      </svg>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+/* ------------------------------ Modal shell ------------------------------ */
 
 function ModalShell({
   eyebrow,
@@ -1067,25 +1283,22 @@ function ModalShell({
   onClose,
   children,
 }) {
-  const titleId = useId();
+  const titleId = `modal-${useId()}`;
 
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, []);
-
-  useEffect(() => {
-    function onKey(event) {
+    const onKey = (event) => {
       if (event.key === "Escape") onClose();
-    }
+    };
 
     document.addEventListener("keydown", onKey);
 
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener("keydown", onKey);
+    };
   }, [onClose]);
 
   return (
@@ -1098,48 +1311,37 @@ function ModalShell({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-panel shadow-2xl animate-[rmSheetUp_.24s_ease-out] sm:rounded-3xl">
-        <div className="overflow-y-auto overscroll-contain p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6">
-          <div
-            aria-hidden="true"
-            className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/15 sm:hidden"
-          />
+      <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-panel p-5 shadow-2xl sm:rounded-3xl sm:p-6">
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
 
-          {eyebrow && (
-            <p
-              className={`font-mono text-[11px] uppercase tracking-[0.2em] ${eyebrowClass}`}
-            >
-              {eyebrow}
-            </p>
-          )}
-
-          <h2
-            id={titleId}
-            className="mt-2 font-display text-xl font-semibold text-white"
+        {eyebrow && (
+          <p
+            className={`font-mono text-[11px] uppercase tracking-[0.2em] ${eyebrowClass}`}
           >
-            {title}
-          </h2>
+            {eyebrow}
+          </p>
+        )}
 
-          {description && (
-            <p className="mt-2 text-sm leading-relaxed text-mist">
-              {description}
-            </p>
-          )}
+        <h2
+          id={titleId}
+          className="mt-2 font-display text-xl font-semibold text-white"
+        >
+          {title}
+        </h2>
 
-          {children}
-        </div>
+        {description && (
+          <p className="mt-2 text-sm leading-relaxed text-mist">
+            {description}
+          </p>
+        )}
+
+        {children}
       </div>
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Change name                                                        */
-/*  Old behaviour: the badge turned into an input that saved on blur   */
-/*  AND on Enter (so Enter saved twice), had no Escape, silently       */
-/*  ignored empty names, and changed the header width while editing.   */
-/*  Now it is one dialog with a live preview and a single save path.   */
-/* ------------------------------------------------------------------ */
+/* ------------------------------ Name editor ------------------------------ */
 
 function NameEditorModal({ currentName, onSave, onClose }) {
   const [draft, setDraft] = useState(currentName || "");
@@ -1152,52 +1354,42 @@ function NameEditorModal({ currentName, onSave, onClose }) {
   }, []);
 
   const clean = draft.replace(/\s+/g, " ").trim();
-  const empty = clean.length === 0;
+  const empty = !clean;
   const unchanged = clean === (currentName || "").trim();
   const canSave = !empty && !unchanged;
 
   function submit(event) {
     event.preventDefault();
     setTouched(true);
-
     if (canSave) onSave(clean);
-  }
-
-  function suggest() {
-    setDraft(randomName());
-    setTouched(true);
-    inputRef.current?.focus();
   }
 
   return (
     <ModalShell
-      eyebrow="Your name"
+      eyebrow="Your identity"
       title="Change your name"
-      description="This is how people see you in rooms and calls. Only stored on this device."
+      description="This is how people see you in rooms and conversations."
       onClose={onClose}
     >
       <form onSubmit={submit} className="mt-5">
-        <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-panel2/60 p-4">
+        <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-panel2 p-4">
           <Avatar name={clean} size="xl" />
-
           <div className="min-w-0">
-            <p className="truncate font-display text-lg font-semibold text-white">
+            <p className="truncate font-display text-lg font-semibold">
               {clean || "Your name"}
             </p>
-
-            <p className="text-xs text-mist">Preview</p>
+            <p className="text-xs text-mist">Live preview</p>
           </div>
         </div>
 
-        <div className="mt-4 flex items-center justify-between">
+        <div className="mt-4 flex justify-between">
           <label
             htmlFor="rc-name-input"
-            className="font-mono text-xs uppercase tracking-wide text-mist"
+            className="text-xs text-mist"
           >
             Display name
           </label>
-
-          <span className="font-mono text-xs text-mist">
+          <span className="text-xs text-mist">
             {draft.length}/{NAME_MAX}
           </span>
         </div>
@@ -1215,40 +1407,35 @@ function NameEditorModal({ currentName, onSave, onClose }) {
           enterKeyHint="done"
           placeholder="What should people call you?"
           aria-invalid={touched && empty}
-          aria-describedby={touched && empty ? "rc-name-error" : undefined}
-          className={`mt-1.5 h-12 w-full rounded-xl border bg-panel2 px-3 text-base text-white outline-none placeholder:text-mist/50 ${touched && empty
-              ? "border-coral/60"
-              : "border-white/10 focus:border-signal/50"
-            }`}
+          className="mt-2 h-12 w-full rounded-xl border border-white/10 bg-panel2 px-3 text-base text-white outline-none focus:border-signal/50"
         />
 
         {touched && empty && (
-          <p id="rc-name-error" role="alert" className="mt-1.5 text-xs text-coral">
+          <p role="alert" className="mt-2 text-xs text-rose-300">
             Your name can't be empty.
           </p>
         )}
 
         <button
           type="button"
-          onClick={suggest}
-          className="mt-3 text-xs font-medium text-signal2 underline underline-offset-4 transition hover:text-white"
+          onClick={() => setDraft(randomName())}
+          className="mt-3 text-xs font-medium text-signal2 underline underline-offset-4"
         >
           Suggest a name
         </button>
 
-        <div className="mt-6 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+        <div className="mt-6 grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-white/10 px-4 py-3 text-sm text-mist transition hover:text-white sm:py-2.5"
+            className="rounded-xl border border-white/10 px-4 py-3 text-sm text-mist hover:text-white"
           >
             Cancel
           </button>
-
           <button
             type="submit"
             disabled={!canSave}
-            className="rounded-xl bg-signal px-5 py-3 text-sm font-semibold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 sm:py-2.5"
+            className="rounded-xl bg-signal px-4 py-3 text-sm font-semibold text-ink disabled:opacity-40"
           >
             Save name
           </button>
@@ -1258,9 +1445,7 @@ function NameEditorModal({ currentName, onSave, onClose }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Room rename / delete (replaces window.prompt and window.confirm)   */
-/* ------------------------------------------------------------------ */
+/* ------------------------------ Room modals ------------------------------ */
 
 function RenameRoomModal({ room, busy, onSubmit, onClose }) {
   const [draft, setDraft] = useState(room.name || "");
@@ -1275,11 +1460,14 @@ function RenameRoomModal({ room, busy, onSubmit, onClose }) {
   const canSave = clean.length > 0 && clean !== room.name && !busy;
 
   return (
-    <ModalShell eyebrow="Your group" title="Rename group" onClose={onClose}>
+    <ModalShell
+      eyebrow="Your group"
+      title="Rename group"
+      onClose={onClose}
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();
-
           if (canSave) onSubmit(clean);
         }}
         className="mt-4"
@@ -1287,30 +1475,27 @@ function RenameRoomModal({ room, busy, onSubmit, onClose }) {
         <label htmlFor="rc-room-name" className="sr-only">
           Group name
         </label>
-
         <input
           id="rc-room-name"
           ref={inputRef}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           maxLength={80}
-          enterKeyHint="done"
-          className="h-12 w-full rounded-xl border border-white/10 bg-panel2 px-3 text-base text-white outline-none placeholder:text-mist/50 focus:border-signal/50"
+          className="h-12 w-full rounded-xl border border-white/10 bg-panel2 px-3 text-base text-white outline-none focus:border-signal/50"
         />
 
-        <div className="mt-6 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+        <div className="mt-6 grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-white/10 px-4 py-3 text-sm text-mist transition hover:text-white sm:py-2.5"
+            className="rounded-xl border border-white/10 px-4 py-3 text-sm text-mist"
           >
             Cancel
           </button>
-
           <button
             type="submit"
             disabled={!canSave}
-            className="rounded-xl bg-signal px-5 py-3 text-sm font-semibold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 sm:py-2.5"
+            className="rounded-xl bg-signal px-4 py-3 text-sm font-semibold text-ink disabled:opacity-40"
           >
             {busy ? "Saving…" : "Save name"}
           </button>
@@ -1324,25 +1509,24 @@ function DeleteRoomModal({ room, busy, onConfirm, onClose }) {
   return (
     <ModalShell
       eyebrow="Delete group"
-      eyebrowClass="text-coral"
-      title={`Delete “${room.name}”?`}
-      description="This can't be undone."
+      eyebrowClass="text-rose-300"
+      title={`Delete "${room.name}"?`}
+      description="This action can't be undone."
       onClose={onClose}
     >
-      <div className="mt-6 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+      <div className="mt-6 grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={onClose}
-          className="rounded-xl border border-white/10 px-4 py-3 text-sm text-mist transition hover:text-white sm:py-2.5"
+          className="rounded-xl border border-white/10 px-4 py-3 text-sm text-mist"
         >
           Keep it
         </button>
-
         <button
           type="button"
           onClick={onConfirm}
           disabled={busy}
-          className="rounded-xl bg-coral px-5 py-3 text-sm font-semibold text-ink transition hover:brightness-110 disabled:opacity-50 sm:py-2.5"
+          className="rounded-xl bg-rose-400 px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50"
         >
           {busy ? "Deleting…" : "Delete"}
         </button>
@@ -1351,9 +1535,7 @@ function DeleteRoomModal({ room, busy, onConfirm, onClose }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Mobile menu (slide-in drawer)                                      */
-/* ------------------------------------------------------------------ */
+/* ------------------------------ Mobile menu ------------------------------ */
 
 const MENU_MAIN_LINKS = [
   ["Profile", "/profile"],
@@ -1361,8 +1543,6 @@ const MENU_MAIN_LINKS = [
   ["Pricing", "/pricing"],
 ];
 
-// Secondary pages sit in a compact two-column grid so the whole menu,
-// including Log out, fits on short phone screens.
 const MENU_MORE_LINKS = [
   ["About", "/about"],
   ["FAQ", "/faq"],
@@ -1384,27 +1564,18 @@ function MobileMenu({
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, []);
-
-  useEffect(() => {
-    function onKey(event) {
+    const onKey = (event) => {
       if (event.key === "Escape") onClose();
-    }
+    };
 
     document.addEventListener("keydown", onKey);
 
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener("keydown", onKey);
+    };
   }, [onClose]);
 
-  /*
-    Why Log out was cut off: a fixed element sized with inset-0 can be taller
-    than the part of the screen you can actually see (mobile browser toolbars,
-    emulators). The drawer is now exactly 100dvh (the visible height), the links
-    scroll inside their own area, and the footer with Log out never scrolls away.
-  */
   return (
     <div
       className="fixed inset-0 z-[90] lg:hidden"
@@ -1413,13 +1584,14 @@ function MobileMenu({
       aria-modal="true"
       aria-label="Navigation menu"
     >
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+      <button
+        type="button"
+        aria-label="Close navigation menu"
+        className="absolute inset-0 h-full w-full bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      <div className="absolute right-0 top-0 flex h-full w-[min(22rem,88vw)] flex-col overflow-hidden border-l border-white/10 bg-panel shadow-2xl animate-[rmSlideIn_.22s_ease-out]">
-        {/* Account */}
+      <div className="absolute right-0 top-0 flex h-full w-[min(22rem,88vw)] flex-col overflow-hidden border-l border-white/10 bg-panel shadow-2xl">
         <div className="flex shrink-0 items-start gap-3 border-b border-white/10 p-4">
           <Avatar name={name} size="lg" />
 
@@ -1427,13 +1599,12 @@ function MobileMenu({
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-signal2">
               Account
             </p>
-
-            <p className="mt-0.5 truncate font-semibold text-white">
+            <p className="mt-1 truncate font-semibold">
               {name || "Guest"}
             </p>
 
             {staffRole && (
-              <p className="mt-1 inline-block rounded-full border border-violet/30 bg-violet/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-violet">
+              <p className="mt-1 inline-block rounded-full border border-violet/30 bg-violet/10 px-2 py-0.5 font-mono text-[10px] uppercase text-violet">
                 {staffRole}
               </p>
             )}
@@ -1441,7 +1612,7 @@ function MobileMenu({
             <button
               type="button"
               onClick={onEditName}
-              className="mt-2 flex items-center gap-1.5 text-xs font-medium text-signal2 transition hover:text-white"
+              className="mt-2 flex items-center gap-1.5 text-xs text-signal2"
             >
               <PencilIcon />
               Change name
@@ -1451,38 +1622,37 @@ function MobileMenu({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close navigation menu"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-mist transition hover:text-white"
+            aria-label="Close"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-mist"
           >
             ×
           </button>
         </div>
 
-        {/* Links: the only part that scrolls */}
-        <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
+        <nav className="min-h-0 flex-1 overflow-y-auto p-3">
           <div className="grid gap-1">
             {MENU_MAIN_LINKS.map(([label, path]) => (
               <button
                 key={path}
                 type="button"
                 onClick={() => onNavigate(path)}
-                className="flex w-full items-center justify-between rounded-xl border border-transparent px-4 py-2.5 text-left text-sm font-medium text-white/90 transition hover:border-white/10 hover:bg-panel2"
+                className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-sm text-white/90 transition hover:bg-panel2"
               >
-                <span>{label}</span>
-                <span className="text-mist/50">→</span>
+                {label}
+                <span className="text-mist">→</span>
               </button>
             ))}
           </div>
 
           <div className="my-3 h-px bg-white/10" />
 
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-2">
             {MENU_MORE_LINKS.map(([label, path]) => (
               <button
                 key={path}
                 type="button"
                 onClick={() => onNavigate(path)}
-                className="rounded-lg border border-white/[0.06] px-3 py-2 text-left text-xs font-medium text-mist transition hover:border-white/15 hover:bg-panel2 hover:text-white"
+                className="rounded-lg border border-white/[0.06] px-3 py-3 text-left text-xs text-mist transition hover:bg-panel2 hover:text-white"
               >
                 {label}
               </button>
@@ -1490,14 +1660,13 @@ function MobileMenu({
           </div>
         </nav>
 
-        {/* Log out: always pinned to the bottom of the visible screen */}
-        <div className="shrink-0 border-t border-white/10 bg-panel p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="shrink-0 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={onLogout}
-            className="flex w-full items-center justify-between rounded-xl border border-coral/30 bg-coral/10 px-4 py-3 text-left text-sm font-semibold text-coral transition hover:bg-coral/20"
+            className="flex w-full items-center justify-between rounded-xl border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-300"
           >
-            <span>Log out</span>
+            Log out
             <span aria-hidden="true">↗</span>
           </button>
         </div>
@@ -1506,9 +1675,7 @@ function MobileMenu({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Logout                                                             */
-/* ------------------------------------------------------------------ */
+/* ------------------------------ Logout modal ------------------------------ */
 
 function LogoutModal({ onClose, onLogout }) {
   const recoveryCode = localStorage.getItem("rc_recovery_code") || "";
@@ -1528,9 +1695,9 @@ function LogoutModal({ onClose, onLogout }) {
   return (
     <ModalShell
       eyebrow="Leaving this device"
-      eyebrowClass="text-coral"
+      eyebrowClass="text-rose-300"
       title="Log out of RandomConnect?"
-      description="Your name and device session will be cleared. You can come back later and onboard again."
+      description="Your name and device session will be cleared. You can come back later."
       onClose={onClose}
     >
       {recoveryCode ? (
@@ -1538,39 +1705,36 @@ function LogoutModal({ onClose, onLogout }) {
           <p className="text-xs text-signal2">
             Save your Premium recovery code first:
           </p>
-
           <p className="mt-2 break-all font-mono text-xs text-white">
             {recoveryCode}
           </p>
-
           <button
             type="button"
             onClick={copyCode}
-            className="mt-3 rounded-lg border border-signal/30 px-3 py-2 text-xs font-semibold text-signal2 hover:bg-signal/10"
+            className="mt-3 rounded-lg border border-signal/30 px-3 py-2 text-xs font-semibold text-signal2"
           >
             {copied ? "Copied" : "Copy recovery code"}
           </button>
         </div>
       ) : (
         <p className="mt-4 rounded-lg border border-violet/20 bg-violet/5 px-3 py-2 text-xs text-mist">
-          No recovery code saved. Create one from Profile before logging out
-          if you have Premium.
+          No recovery code saved. If you have Premium, create one from
+          Profile before logging out.
         </p>
       )}
 
-      <div className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+      <div className="mt-5 grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={onClose}
-          className="rounded-xl border border-white/10 px-4 py-3 text-sm text-mist hover:text-white sm:py-2.5"
+          className="rounded-xl border border-white/10 px-4 py-3 text-sm text-mist"
         >
           Stay
         </button>
-
         <button
           type="button"
           onClick={onLogout}
-          className="rounded-xl bg-coral px-4 py-3 text-sm font-semibold text-ink hover:brightness-110 sm:py-2.5"
+          className="rounded-xl bg-rose-400 px-4 py-3 text-sm font-semibold text-slate-950"
         >
           Log out
         </button>
@@ -1579,9 +1743,7 @@ function LogoutModal({ onClose, onLogout }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Premium referral                                                   */
-/* ------------------------------------------------------------------ */
+/* ------------------------------ Referral card ------------------------------ */
 
 function PremiumReferralCard() {
   const [code, setCode] = useState("");
@@ -1594,7 +1756,6 @@ function PremiumReferralCard() {
 
     try {
       const invite = await api.premiumReferral(getFingerprint());
-
       setCode(invite.code);
 
       const url = `${window.location.origin}/?invite=${encodeURIComponent(
@@ -1623,11 +1784,23 @@ function PremiumReferralCard() {
   }
 
   return (
-    <div className="w-full min-w-0 rounded-2xl border border-dashed border-violet/50 bg-violet/5 p-4">
-      <p className="font-display font-semibold text-white">Invite a friend</p>
+    <div className="min-w-0 rounded-2xl border border-violet/25 bg-gradient-to-br from-violet/10 to-transparent p-5">
+      <div className="flex items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-violet/20 bg-violet/10 text-xl">
+          ✦
+        </div>
+        <div>
+          <p className="font-display font-semibold text-white">
+            Invite a friend
+          </p>
+          <p className="text-xs text-violet">
+            Share the good conversations
+          </p>
+        </div>
+      </div>
 
-      <p className="mt-1 text-sm leading-relaxed text-mist">
-        Both of you get 30 days of Premium free.
+      <p className="mt-3 text-sm leading-relaxed text-mist">
+        Invite a friend and you can both get 30 days of Premium free.
       </p>
 
       {code && (
@@ -1640,7 +1813,7 @@ function PremiumReferralCard() {
         type="button"
         onClick={shareInvite}
         disabled={busy}
-        className="mt-3 flex w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-white/10 bg-panel2 px-3 py-3 text-sm font-semibold text-white transition hover:border-violet/50 disabled:opacity-50"
+        className="mt-4 flex min-h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-panel2 px-3 py-3 text-sm font-semibold text-white transition hover:border-violet/50 disabled:opacity-50"
       >
         {busy ? "Preparing invite…" : "Share invite link"}
       </button>
@@ -1651,27 +1824,9 @@ function PremiumReferralCard() {
         </p>
       )}
 
-      <p className="mt-2 text-center text-[11px] leading-relaxed text-mist">
-        View your Premium days and community progress in Profile.
+      <p className="mt-3 text-center text-[11px] text-mist">
+        Track your Premium days in Profile.
       </p>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Skeleton                                                           */
-/* ------------------------------------------------------------------ */
-
-function RoomSkeleton() {
-  return (
-    <div
-      className="w-full min-w-0 animate-pulse rounded-2xl border border-white/5 bg-panel/60 p-4"
-      aria-hidden="true"
-    >
-      <div className="h-3 w-24 rounded bg-white/10" />
-      <div className="mt-3 h-5 w-2/3 max-w-full rounded bg-white/10" />
-      <div className="mt-2 h-3 w-full max-w-full rounded bg-white/5" />
-      <div className="mt-5 h-3 w-28 rounded bg-white/10" />
     </div>
   );
 }
