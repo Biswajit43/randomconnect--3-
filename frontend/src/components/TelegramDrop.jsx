@@ -1,4 +1,4 @@
-```jsx
+
 import { useEffect, useState } from "react";
 
 const TELEGRAM_URL = "https://t.me/voisabot";
@@ -204,4 +204,3 @@ export default function TelegramDrop() {
     </section>
   );
 }
-```
